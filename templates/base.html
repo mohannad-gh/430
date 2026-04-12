@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}VolleyLB{% endblock %}</title>
+{% load static %}
+<link rel="stylesheet" href="{% static 'css/main.css' %}">
+</head>
+<body>
+<div class="app-shell">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">🏐</div>
+      <div class="logo-text">Volley<span>LB</span></div>
+    </div>
+
+    <nav class="nav-section">
+      <div class="nav-label">Main</div>
+      <a href="{% url 'dashboard' %}" class="nav-item {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
+        <span class="icon">🏠</span> Dashboard
+      </a>
+
+      <div class="nav-label" style="margin-top:1rem">Teams</div>
+      <a href="{% url 'teams_list' %}" class="nav-item {% if 'team' in request.resolver_match.url_name %}active{% endif %}">
+        <span class="icon">👥</span> Teams
+      </a>
+
+      {% if request.user.profile.role != 'coordinator' %}
+      <div class="nav-label" style="margin-top:1rem">Schedule</div>
+      <a href="{% url 'sessions_list' %}" class="nav-item {% if 'session' in request.resolver_match.url_name %}active{% endif %}">
+        <span class="icon">📅</span> Sessions
+      </a>
+      {% if request.user.profile.role == 'player' %}
+      <a href="{% url 'availability' %}" class="nav-item {% if request.resolver_match.url_name == 'availability' %}active{% endif %}">
+        <span class="icon">✅</span> My Availability
+      </a>
+      {% endif %}
+      {% if request.user.profile.role == 'coach' %}
+      <a href="{% url 'ai_schedule' %}" class="nav-item {% if request.resolver_match.url_name == 'ai_schedule' %}active{% endif %}">
+        <span class="icon">🧠</span> AI Scheduling
+      </a>
+      {% endif %}
+      {% else %}
+      <div class="nav-label" style="margin-top:1rem">Schedule</div>
+      <a href="{% url 'sessions_list' %}" class="nav-item {% if 'session' in request.resolver_match.url_name %}active{% endif %}">
+        <span class="icon">📅</span> Sessions
+      </a>
+      {% endif %}
+
+      <div class="nav-label" style="margin-top:1rem">Communication</div>
+      <a href="{% url 'announcements_list' %}" class="nav-item {% if 'announcement' in request.resolver_match.url_name %}active{% endif %}">
+        <span class="icon">📢</span> Announcements
+      </a>
+      <a href="{% url 'notifications_list' %}" class="nav-item {% if 'notification' in request.resolver_match.url_name %}active{% endif %}">
+        <span class="icon">🔔</span> Notifications
+        {% with count=request.user.notifications.filter %}
+        {% endwith %}
+      </a>
+
+      <div class="nav-label" style="margin-top:1rem">Finance</div>
+      <a href="{% url 'fees_list' %}" class="nav-item {% if 'fee' in request.resolver_match.url_name %}active{% endif %}">
+        <span class="icon">💰</span> {% if request.user.profile.role == 'coordinator' %}Fees{% else %}My Fees{% endif %}
+      </a>
+      {% if request.user.profile.role == 'coordinator' %}
+      <a href="{% url 'financial_summary' %}" class="nav-item {% if request.resolver_match.url_name == 'financial_summary' %}active{% endif %}">
+        <span class="icon">📊</span> Financial Summary
+      </a>
+      {% endif %}
+      {% if request.user.profile.role == 'coach' %}
+      <a href="{% url 'earnings_list' %}" class="nav-item {% if request.resolver_match.url_name == 'earnings_list' %}active{% endif %}">
+        <span class="icon">💵</span> My Earnings
+      </a>
+      {% endif %}
+
+      {% if request.user.profile.role == 'coordinator' %}
+      <div class="nav-label" style="margin-top:1rem">Management</div>
+      <a href="{% url 'courts_list' %}" class="nav-item {% if 'court' in request.resolver_match.url_name %}active{% endif %}">
+        <span class="icon">🏟️</span> Courts
+      </a>
+      <a href="{% url 'users_list' %}" class="nav-item {% if 'user' in request.resolver_match.url_name %}active{% endif %}">
+        <span class="icon">👤</span> Users
+      </a>
+      {% endif %}
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="user-chip">
+        <div class="user-avatar">{{ request.user.username|first|upper }}</div>
+        <div class="user-info">
+          <div class="user-name">{{ request.user.get_full_name|default:request.user.username }}</div>
+          <div class="user-role">{{ request.user.profile.role }}</div>
+        </div>
+      </div>
+      <a href="{% url 'logout' %}" class="btn-logout">🚪 Sign Out</a>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main-content">
+    {% if messages %}
+      {% for message in messages %}
+        <div class="alert alert-{% if message.tags == 'error' %}error{% else %}{{ message.tags }}{% endif %}">
+          {% if message.tags == 'success' %}✅{% elif message.tags == 'error' %}❌{% else %}ℹ️{% endif %}
+          {{ message }}
+        </div>
+      {% endfor %}
+    {% endif %}
+
+    {% block content %}{% endblock %}
+  </main>
+</div>
+</body>
+</html>

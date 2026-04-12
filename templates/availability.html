@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block title %}My Availability — VolleyLB{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div><div class="page-title">My <span>Availability</span></div><div class="text-muted">Set your weekly availability for training sessions</div></div>
+</div>
+<div class="card" style="max-width:700px">
+  <form method="post">
+    {% csrf_token %}
+    <div class="avail-grid">
+      <div class="avail-header"></div>
+      <div class="avail-header">🌅 Morning</div>
+      <div class="avail-header">☀️ Afternoon</div>
+      <div class="avail-header">🌙 Evening</div>
+      {% for day in days %}
+      <div class="avail-day">{{ day|title }}</div>
+      {% for slot in slots %}
+      <div class="avail-cell">
+        <input type="checkbox" name="{{ day }}_{{ slot }}" {% if day|add:','|add:slot in user_avail|join:',' %}{% endif %}
+          {% for a in user_avail %}{% if a.0 == day and a.1 == slot %}checked{% endif %}{% endfor %}>
+      </div>
+      {% endfor %}
+      {% endfor %}
+    </div>
+    <div class="divider"></div>
+    <button type="submit" class="btn btn-primary">✅ Save Availability</button>
+  </form>
+</div>
+{% endblock %}

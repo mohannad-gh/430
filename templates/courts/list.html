@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block title %}Courts — VolleyLB{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div class="page-title">Cour<span>ts</span></div>
+  <div class="topbar-actions">
+    {% if role == 'coordinator' %}<a href="{% url 'court_create' %}" class="btn btn-primary">+ Add Court</a>{% endif %}
+  </div>
+</div>
+<div class="grid-3">
+  {% for court in courts %}
+  <div class="card {% if not court.is_active %}opacity-50{% endif %}">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem">
+      <div style="font-size:2rem">{% if court.court_type == 'indoor' %}🏟️{% else %}🌿{% endif %}</div>
+      <div style="display:flex;gap:0.4rem">
+        <span class="badge badge-{% if court.court_type == 'indoor' %}info{% else %}success{% endif %}">{{ court.court_type }}</span>
+        {% if not court.is_active %}<span class="badge badge-danger">Inactive</span>{% endif %}
+      </div>
+    </div>
+    <div style="font-family:'Bebas Neue',cursive;font-size:1.3rem;letter-spacing:1px;margin-bottom:0.25rem">{{ court.name }}</div>
+    <div class="text-muted" style="font-size:0.85rem;margin-bottom:0.75rem">📍 {{ court.location }}</div>
+    <div class="text-muted" style="font-size:0.8rem">Capacity: {{ court.capacity }} players</div>
+    {% if role == 'coordinator' %}
+    <div class="divider"></div>
+    <div style="display:flex;gap:0.5rem">
+      <a href="{% url 'court_edit' court.pk %}" class="btn btn-secondary btn-sm">✏️ Edit</a>
+      <a href="{% url 'court_delete' court.pk %}" class="btn btn-danger btn-sm">🗑️</a>
+    </div>
+    {% endif %}
+  </div>
+  {% empty %}
+  <div class="empty-state" style="grid-column:1/-1"><div class="icon">🏟️</div><p>No courts yet.</p>
+  {% if role == 'coordinator' %}<a href="{% url 'court_create' %}" class="btn btn-primary mt-2">Add First Court</a>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

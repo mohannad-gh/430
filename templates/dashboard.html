@@ -1,0 +1,254 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard — VolleyLB{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <div class="page-title">Dash<span>board</span></div>
+    <div class="text-muted">Welcome back, {{ request.user.get_full_name|default:request.user.username }}</div>
+  </div>
+  <div class="topbar-actions">
+    {% if unread_count > 0 %}
+    <a href="{% url 'notifications_list' %}" class="btn btn-secondary">🔔 {{ unread_count }} New</a>
+    {% endif %}
+    {% if role == 'coordinator' %}
+    <a href="{% url 'team_create' %}" class="btn btn-primary">+ New Team</a>
+    {% elif role == 'coach' %}
+    <a href="{% url 'session_create' %}" class="btn btn-primary">+ New Session</a>
+    {% endif %}
+  </div>
+</div>
+
+<!-- COORDINATOR DASHBOARD -->
+{% if role == 'coordinator' %}
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-value">{{ teams.count }}</div>
+    <div class="stat-label">Total Teams</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ total_players }}</div>
+    <div class="stat-label">Players</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ total_coaches }}</div>
+    <div class="stat-label">Coaches</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ courts.count }}</div>
+    <div class="stat-label">Active Courts</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" style="color:var(--success)">${{ total_collected }}</div>
+    <div class="stat-label">Collected</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" style="color:var(--danger)">${{ total_overdue }}</div>
+    <div class="stat-label">Overdue</div>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">📅 Upcoming Sessions</div>
+      <a href="{% url 'sessions_list' %}" class="btn btn-secondary btn-sm">View All</a>
+    </div>
+    {% for s in upcoming_sessions %}
+    <a href="{% url 'session_detail' s.pk %}" class="session-item" style="color:inherit">
+      <div class="session-date-box">
+        <div class="session-date-day">{{ s.date|date:"d" }}</div>
+        <div class="session-date-month">{{ s.date|date:"M" }}</div>
+      </div>
+      <div class="session-info">
+        <div class="session-title">{{ s.title }}</div>
+        <div class="session-meta">{{ s.team.name }} · {{ s.start_time|time:"H:i" }} · {{ s.court.name|default:"TBD" }}</div>
+      </div>
+      <span class="badge badge-{% if s.session_type == 'match' %}orange{% else %}info{% endif %}">{{ s.session_type }}</span>
+    </a>
+    {% empty %}
+    <div class="empty-state"><div class="icon">📅</div>No upcoming sessions</div>
+    {% endfor %}
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">👥 Teams</div>
+      <a href="{% url 'teams_list' %}" class="btn btn-secondary btn-sm">View All</a>
+    </div>
+    {% for t in teams %}
+    <a href="{% url 'team_detail' t.pk %}" class="session-item" style="color:inherit; margin-bottom:0.5rem;">
+      <div class="team-icon">🏐</div>
+      <div class="session-info">
+        <div class="session-title">{{ t.name }}</div>
+        <div class="session-meta">{{ t.players.count }} players · {{ t.coaches.count }} coaches</div>
+      </div>
+    </a>
+    {% empty %}
+    <div class="empty-state"><div class="icon">👥</div>No teams yet</div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card mt-3">
+  <div class="card-header">
+    <div class="card-title">📢 Recent Announcements</div>
+    <a href="{% url 'announcement_create' %}" class="btn btn-primary btn-sm">+ Broadcast</a>
+  </div>
+  {% for a in announcements %}
+  <div class="ann-card">
+    <div class="ann-title">{{ a.title }}</div>
+    <div class="ann-meta">{{ a.author.username }} · {{ a.created_at|date:"M d, Y" }} · <span class="badge badge-{% if a.scope == 'club' %}orange{% else %}info{% endif %}">{{ a.scope }}</span></div>
+    <div class="ann-content">{{ a.content|truncatewords:20 }}</div>
+  </div>
+  {% empty %}
+  <div class="empty-state"><div class="icon">📢</div>No announcements yet</div>
+  {% endfor %}
+</div>
+
+<!-- COACH DASHBOARD -->
+{% elif role == 'coach' %}
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-value">{{ teams.count }}</div>
+    <div class="stat-label">My Teams</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ upcoming_sessions.count }}</div>
+    <div class="stat-label">Upcoming</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" style="color:var(--success)">${{ total_earnings }}</div>
+    <div class="stat-label">Total Earned</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" style="color:var(--warning)">${{ pending_earnings }}</div>
+    <div class="stat-label">Pending Payout</div>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">📅 Upcoming Sessions</div>
+      <a href="{% url 'session_create' %}" class="btn btn-primary btn-sm">+ Create</a>
+    </div>
+    {% for s in upcoming_sessions %}
+    <a href="{% url 'session_detail' s.pk %}" class="session-item" style="color:inherit">
+      <div class="session-date-box">
+        <div class="session-date-day">{{ s.date|date:"d" }}</div>
+        <div class="session-date-month">{{ s.date|date:"M" }}</div>
+      </div>
+      <div class="session-info">
+        <div class="session-title">{{ s.title }}</div>
+        <div class="session-meta">{{ s.team.name }} · {{ s.start_time|time:"H:i" }} · {{ s.court.name|default:"TBD" }}</div>
+      </div>
+    </a>
+    {% empty %}
+    <div class="empty-state"><div class="icon">📅</div>No upcoming sessions</div>
+    {% endfor %}
+    <div class="mt-2">
+      <a href="{% url 'ai_schedule' %}" class="btn btn-primary w-full" style="justify-content:center">🧠 AI Smart Schedule</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">📢 Announcements</div>
+      <a href="{% url 'announcement_create' %}" class="btn btn-primary btn-sm">+ Post</a>
+    </div>
+    {% for a in announcements %}
+    <div class="ann-card">
+      <div class="ann-title">{{ a.title }}</div>
+      <div class="ann-meta">{{ a.created_at|date:"M d" }}</div>
+      <div class="ann-content">{{ a.content|truncatewords:15 }}</div>
+    </div>
+    {% empty %}
+    <div class="empty-state"><div class="icon">📢</div>No announcements</div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- PLAYER DASHBOARD -->
+{% else %}
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-value">{{ teams.count }}</div>
+    <div class="stat-label">My Teams</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ upcoming_sessions.count }}</div>
+    <div class="stat-label">Upcoming Sessions</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" style="color:var(--warning)">{{ pending_fees.count }}</div>
+    <div class="stat-label">Pending Fees</div>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">📅 My Schedule</div>
+      <a href="{% url 'sessions_list' %}" class="btn btn-secondary btn-sm">View All</a>
+    </div>
+    {% for s in upcoming_sessions %}
+    <a href="{% url 'session_detail' s.pk %}" class="session-item" style="color:inherit">
+      <div class="session-date-box">
+        <div class="session-date-day">{{ s.date|date:"d" }}</div>
+        <div class="session-date-month">{{ s.date|date:"M" }}</div>
+      </div>
+      <div class="session-info">
+        <div class="session-title">{{ s.title }}</div>
+        <div class="session-meta">{{ s.team.name }} · {{ s.start_time|time:"H:i" }} · {{ s.court.name|default:"TBD" }}</div>
+      </div>
+      <span class="badge badge-{% if s.session_type == 'match' %}orange{% else %}info{% endif %}">{{ s.session_type }}</span>
+    </a>
+    {% empty %}
+    <div class="empty-state"><div class="icon">📅</div>No upcoming sessions</div>
+    {% endfor %}
+    <div class="mt-2">
+      <a href="{% url 'availability' %}" class="btn btn-secondary w-full" style="justify-content:center">✅ Update My Availability</a>
+    </div>
+  </div>
+
+  <div>
+    {% if pending_fees %}
+    <div class="card mb-2" style="border-color:var(--border-orange)">
+      <div class="card-header">
+        <div class="card-title">💰 Pending Fees</div>
+        <a href="{% url 'fees_list' %}" class="btn btn-secondary btn-sm">View All</a>
+      </div>
+      {% for pf in pending_fees %}
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:0.75rem;background:var(--bg-card2);border-radius:10px;margin-bottom:0.5rem;">
+        <div>
+          <div style="font-weight:600">{{ pf.fee.name }}</div>
+          <div class="text-muted">Due {{ pf.fee.deadline }}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.75rem">
+          <span style="font-family:'Bebas Neue';font-size:1.2rem;color:var(--orange)">${{ pf.amount_due }}</span>
+          <span class="badge badge-{% if pf.status == 'overdue' %}danger{% else %}warning{% endif %}">{{ pf.status }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">📢 Announcements</div>
+      </div>
+      {% for a in announcements %}
+      <div class="ann-card">
+        <div class="ann-title">{{ a.title }}</div>
+        <div class="ann-meta">{{ a.created_at|date:"M d" }}</div>
+        <div class="ann-content">{{ a.content|truncatewords:15 }}</div>
+      </div>
+      {% empty %}
+      <div class="empty-state"><div class="icon">📢</div>No announcements</div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

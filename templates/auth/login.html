@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VolleyLB — Sign In</title>
+{% load static %}
+<link rel="stylesheet" href="{% static 'css/main.css' %}">
+</head>
+<body>
+<div class="auth-page">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="auth-logo-circle">🏐</div>
+      <div class="auth-logo-name">Volley<span>LB</span></div>
+      <div class="auth-subtitle">Lebanese Volleyball Club Management</div>
+    </div>
+    {% if messages %}{% for msg in messages %}
+      <div class="alert alert-error">❌ {{ msg }}</div>
+    {% endfor %}{% endif %}
+    <div class="auth-title">Sign In</div>
+    <form method="post">
+      {% csrf_token %}
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" name="username" placeholder="Enter your username" required autofocus>
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" name="password" placeholder="Enter your password" required>
+      </div>
+      <button type="submit" class="btn btn-primary w-full" style="justify-content:center;padding:0.85rem;">🏐 Sign In</button>
+    </form>
+    <div class="divider"></div>
+    <p class="text-muted" style="text-align:center">No account? <a href="{% url 'register' %}" style="color:var(--orange)">Register here</a></p>
+  </div>
+</div>
+</body>
+</html>

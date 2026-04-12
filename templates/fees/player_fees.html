@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% block title %}My Fees — VolleyLB{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div class="page-title">My <span>Fees</span></div>
+</div>
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Fee</th><th>Amount Due</th><th>Deadline</th><th>Status</th><th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for pf in player_fees %}
+        <tr>
+          <td>
+            <div style="font-weight:600">{{ pf.fee.name }}</div>
+            {% if pf.late_fee_applied %}<div class="text-muted" style="font-size:0.75rem">⚠️ Late fee applied</div>{% endif %}
+          </td>
+          <td><span style="font-family:'Bebas Neue',cursive;font-size:1.2rem;color:var(--orange)">${{ pf.amount_due }}</span></td>
+          <td>{{ pf.fee.deadline }}</td>
+          <td>
+            <span class="badge badge-{% if pf.status == 'paid' %}success{% elif pf.status == 'overdue' %}danger{% else %}warning{% endif %}">
+              {% if pf.status == 'paid' %}✅{% elif pf.status == 'overdue' %}🔴{% else %}⏳{% endif %} {{ pf.status }}
+            </span>
+          </td>
+          <td>
+            {% if pf.status != 'paid' %}
+            <form method="post" action="{% url 'pay_fee' pf.pk %}">{% csrf_token %}
+              <button class="btn btn-success btn-sm">💳 Pay Now</button>
+            </form>
+            {% else %}
+            <span class="text-muted" style="font-size:0.8rem">Paid {{ pf.paid_at|date:"M d, Y" }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" class="empty-state">No fees assigned to you yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

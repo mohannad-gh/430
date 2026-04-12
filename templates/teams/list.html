@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block title %}Teams — VolleyLB{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div class="page-title">Tea<span>ms</span></div>
+  <div class="topbar-actions">
+    {% if role == 'coordinator' %}<a href="{% url 'team_create' %}" class="btn btn-primary">+ New Team</a>{% endif %}
+  </div>
+</div>
+<div class="grid-3">
+  {% for team in teams %}
+  <a href="{% url 'team_detail' team.pk %}" class="team-card">
+    <div class="team-card-header">
+      <div class="team-icon">🏐</div>
+      <div>
+        <div class="team-name">{{ team.name }}</div>
+        <div class="text-muted" style="font-size:0.8rem">Coord: {{ team.coordinator.username|default:"—" }}</div>
+      </div>
+    </div>
+    <div class="team-stats">
+      <div class="team-stat"><div class="team-stat-val">{{ team.players.count }}</div><div class="team-stat-label">Players</div></div>
+      <div class="team-stat"><div class="team-stat-val">{{ team.coaches.count }}</div><div class="team-stat-label">Coaches</div></div>
+      <div class="team-stat"><div class="team-stat-val">{{ team.sessions.count }}</div><div class="team-stat-label">Sessions</div></div>
+    </div>
+    {% if team.description %}<div class="text-muted mt-1" style="font-size:0.82rem">{{ team.description|truncatewords:12 }}</div>{% endif %}
+  </a>
+  {% empty %}
+  <div class="empty-state" style="grid-column:1/-1"><div class="icon">👥</div><p>No teams yet.</p>
+  {% if role == 'coordinator' %}<a href="{% url 'team_create' %}" class="btn btn-primary mt-2">Create First Team</a>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

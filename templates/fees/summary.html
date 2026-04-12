@@ -1,0 +1,66 @@
+{% extends 'base.html' %}
+{% block title %}Financial Summary — VolleyLB{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div class="page-title">Financial <span>Summary</span></div>
+  <div class="topbar-actions">
+    <a href="{% url 'fee_create' %}" class="btn btn-primary">+ New Fee</a>
+  </div>
+</div>
+
+<div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:2rem">
+  <div class="stat-card" style="border-top-color:var(--success)">
+    <div class="stat-value" style="color:var(--success)">${{ total_collected }}</div>
+    <div class="stat-label">Total Collected</div>
+  </div>
+  <div class="stat-card" style="border-top-color:var(--warning)">
+    <div class="stat-value" style="color:var(--warning)">${{ total_pending }}</div>
+    <div class="stat-label">Pending</div>
+  </div>
+  <div class="stat-card" style="border-top-color:var(--danger)">
+    <div class="stat-value" style="color:var(--danger)">${{ total_overdue }}</div>
+    <div class="stat-label">Overdue</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><div class="card-title">📋 All Fees Breakdown</div></div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Fee Name</th>
+          <th>Amount</th>
+          <th>Late Fee</th>
+          <th>Deadline</th>
+          <th>Assigned</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for fee in fees %}
+        <tr>
+          <td>
+            <a href="{% url 'fee_detail' fee.pk %}" style="color:var(--orange);font-weight:600">{{ fee.name }}</a>
+            {% if fee.team %}<div class="text-muted" style="font-size:0.75rem">{{ fee.team.name }}</div>{% endif %}
+          </td>
+          <td><strong>${{ fee.amount }}</strong></td>
+          <td class="text-muted">${{ fee.late_fee_amount }}</td>
+          <td class="text-muted">{{ fee.deadline }}</td>
+          <td>
+            <div style="display:flex;gap:0.4rem;flex-wrap:wrap">
+              {% for pf in fee.player_fees.all %}
+              <span class="badge badge-{% if pf.status == 'paid' %}success{% elif pf.status == 'overdue' %}danger{% else %}warning{% endif %}" style="font-size:0.6rem">{{ pf.player.username }}</span>
+              {% endfor %}
+            </div>
+          </td>
+          <td><a href="{% url 'fee_detail' fee.pk %}" class="btn btn-secondary btn-sm">View</a></td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6"><div class="empty-state">No fees created yet.</div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

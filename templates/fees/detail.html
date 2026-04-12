@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+{% block title %}{{ fee.name }} — VolleyLB{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <a href="{% url 'fees_list' %}" class="text-muted" style="font-size:0.85rem">← Back to Fees</a>
+    <div class="page-title">{{ fee.name }}</div>
+  </div>
+  <div class="topbar-actions">
+    <a href="{% url 'financial_summary' %}" class="btn btn-secondary">📊 Summary</a>
+  </div>
+</div>
+
+<div class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:1.5rem">
+  <div class="stat-card">
+    <div class="stat-value">${{ fee.amount }}</div>
+    <div class="stat-label">Base Amount</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" style="color:var(--warning)">${{ fee.late_fee_amount }}</div>
+    <div class="stat-label">Late Fee</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ player_fees.count }}</div>
+    <div class="stat-label">Assigned</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ fee.deadline }}</div>
+    <div class="stat-label">Deadline</div>
+  </div>
+</div>
+
+<!-- Assign Fee -->
+<div class="card mb-2">
+  <div class="card-header"><div class="card-title">➕ Assign Fee to Players</div></div>
+  <form method="post" action="{% url 'fee_assign' fee.pk %}">
+    {% csrf_token %}
+    <div class="grid-2">
+      <div class="form-group">
+        <label>Assign Type</label>
+        <select name="assign_type" id="assign-type-select">
+          <option value="players">Individual Players</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Select Players (hold Ctrl/Cmd for multiple)</label>
+        <select name="player_ids" multiple style="height:130px">
+          {% for p in all_players %}
+          <option value="{{ p.pk }}">{{ p.get_full_name|default:p.username }}</option>
+          {% empty %}
+          <option disabled>All eligible players already assigned</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm">➕ Assign Selected</button>
+  </form>
+</div>
+
+<!-- Payment Status Table -->
+<div class="card">
+  <div class="card-header"><div class="card-title">💰 Payment Status ({{ player_fees.count }} players)</div></div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Player</th>
+          <th>Amount Due</th>
+          <th>Status</th>
+          <th>Late Fee Applied</th>
+          <th>Paid At</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for pf in player_fees %}
+        <tr>
+          <td>
+            <div style="display:flex;align-items:center;gap:0.5rem">
+              <div class="user-avatar" style="width:28px;height:28px;font-size:0.75rem">{{ pf.player.username|first|upper }}</div>
+              {{ pf.player.get_full_name|default:pf.player.username }}
+            </div>
+          </td>
+          <td><strong style="color:var(--orange)">${{ pf.amount_due }}</strong></td>
+          <td>
+            <span class="badge badge-{% if pf.status == 'paid' %}success{% elif pf.status == 'overdue' %}danger{% else %}warning{% endif %}">
+              {% if pf.status == 'paid' %}✅{% elif pf.status == 'overdue' %}🔴{% else %}⏳{% endif %} {{ pf.status }}
+            </span>
+          </td>
+          <td>{% if pf.late_fee_applied %}<span class="badge badge-danger">+${{ fee.late_fee_amount }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+          <td class="text-muted" style="font-size:0.85rem">{% if pf.paid_at %}{{ pf.paid_at|date:"M d, Y" }}{% else %}—{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5"><div class="empty-state">No players assigned yet. Use the form above to assign.</div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

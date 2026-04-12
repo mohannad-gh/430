@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% block title %}My Earnings — VolleyLB{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div class="page-title">My <span>Earnings</span></div>
+</div>
+
+<div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:2rem">
+  <div class="stat-card">
+    <div class="stat-value" style="color:var(--success)">${{ total }}</div>
+    <div class="stat-label">Total Earnings</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" style="color:var(--orange)">${{ paid_total }}</div>
+    <div class="stat-label">Paid Out</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" style="color:var(--warning)">${{ pending_total }}</div>
+    <div class="stat-label">Pending</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><div class="card-title">💵 Payout History</div></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Session</th><th>Date</th><th>Team</th><th>Amount</th><th>Status</th><th>Paid At</th></tr></thead>
+      <tbody>
+        {% for e in earnings %}
+        <tr>
+          <td><a href="{% url 'session_detail' e.session.pk %}" style="color:var(--orange)">{{ e.session.title }}</a></td>
+          <td>{{ e.session.date|date:"M d, Y" }}</td>
+          <td>{{ e.session.team.name }}</td>
+          <td><strong style="color:var(--success)">${{ e.amount }}</strong></td>
+          <td><span class="badge badge-{% if e.paid %}success{% else %}warning{% endif %}">{% if e.paid %}✅ Paid{% else %}⏳ Pending{% endif %}</span></td>
+          <td>{% if e.paid_at %}{{ e.paid_at|date:"M d, Y" }}{% else %}—{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="empty-state">No earnings recorded yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

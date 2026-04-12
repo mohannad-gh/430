@@ -1,0 +1,69 @@
+{% extends 'base.html' %}
+{% block title %}{{ session.title }} — VolleyLB{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div><a href="{% url 'sessions_list' %}" class="text-muted" style="font-size:0.85rem">← Back to Sessions</a>
+  <div class="page-title">{{ session.title }}</div></div>
+  <div class="topbar-actions">
+    {% if role == 'coach' or role == 'coordinator' %}
+    <a href="{% url 'session_edit' session.pk %}" class="btn btn-secondary">✏️ Edit</a>
+    {% if session.status == 'scheduled' %}
+    <a href="{% url 'manage_attendance' session.pk %}" class="btn btn-primary">📋 Mark Attendance</a>
+    {% endif %}
+    <a href="{% url 'session_delete' session.pk %}" class="btn btn-danger">🗑️</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="grid-2" style="margin-bottom:1.5rem">
+  <div class="card card-orange">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+      <div>
+        <div class="text-muted" style="font-size:0.7rem;letter-spacing:1px;text-transform:uppercase">Date</div>
+        <div style="font-family:'Bebas Neue',cursive;font-size:1.5rem;color:var(--orange)">{{ session.date|date:"d M Y" }}</div>
+      </div>
+      <div>
+        <div class="text-muted" style="font-size:0.7rem;letter-spacing:1px;text-transform:uppercase">Time</div>
+        <div style="font-family:'Bebas Neue',cursive;font-size:1.5rem">{{ session.start_time|time:"H:i" }} – {{ session.end_time|time:"H:i" }}</div>
+      </div>
+      <div>
+        <div class="text-muted" style="font-size:0.7rem;letter-spacing:1px;text-transform:uppercase">Court</div>
+        <div style="font-weight:600">{{ session.court.name|default:"TBD" }}</div>
+        {% if session.court %}<div class="text-muted" style="font-size:0.78rem">{{ session.court.location }}</div>{% endif %}
+      </div>
+      <div>
+        <div class="text-muted" style="font-size:0.7rem;letter-spacing:1px;text-transform:uppercase">Team</div>
+        <div style="font-weight:600"><a href="{% url 'team_detail' session.team.pk %}" style="color:var(--text-white)">{{ session.team.name }}</a></div>
+      </div>
+      <div>
+        <div class="text-muted" style="font-size:0.7rem;letter-spacing:1px;text-transform:uppercase">Type</div>
+        <span class="badge badge-{% if session.session_type == 'match' %}orange{% else %}info{% endif %}">{{ session.session_type }}</span>
+      </div>
+      <div>
+        <div class="text-muted" style="font-size:0.7rem;letter-spacing:1px;text-transform:uppercase">Status</div>
+        <span class="badge badge-{% if session.status == 'completed' %}success{% elif session.status == 'cancelled' %}danger{% else %}gray{% endif %}">{{ session.status }}</span>
+      </div>
+    </div>
+    {% if session.opponent %}<div class="mt-2"><div class="text-muted" style="font-size:0.7rem;letter-spacing:1px;text-transform:uppercase">Opponent</div><div style="font-family:'Bebas Neue',cursive;font-size:1.2rem">vs {{ session.opponent }}</div></div>{% endif %}
+    {% if session.notes %}<div class="mt-2"><div class="text-muted" style="font-size:0.7rem;letter-spacing:1px;text-transform:uppercase">Notes</div><div style="font-size:0.9rem;color:var(--text-light)">{{ session.notes }}</div></div>{% endif %}
+    {% if session.ai_generated %}<div class="mt-2"><span class="badge badge-info">🧠 AI-Generated Session</span></div>{% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-header"><div class="card-title">📋 Attendance ({{ attendances.count }})</div></div>
+    {% for att in attendances %}
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:0.6rem 0;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:0.5rem">
+        <div class="user-avatar" style="width:28px;height:28px;font-size:0.75rem">{{ att.player.username|first|upper }}</div>
+        <span style="font-size:0.9rem">{{ att.player.get_full_name|default:att.player.username }}</span>
+      </div>
+      <span class="badge badge-{% if att.status == 'present' %}success{% elif att.status == 'late' %}warning{% else %}danger{% endif %}">{{ att.status }}</span>
+    </div>
+    {% empty %}
+    <div class="text-muted" style="font-size:0.85rem">
+      {% if session.status == 'scheduled' %}Attendance will be recorded after the session.{% else %}No attendance recorded.{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,869 @@
+import json
+import requests
+from datetime import date, datetime, timedelta
+from decimal import Decimal
+
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.models import User
+from django.contrib.auth.decorators import login_required
+from django.contrib import messages
+from django.http import JsonResponse
+from django.utils import timezone
+from django.db.models import Sum, Q
+
+from .models import (
+    UserProfile, Team, Court, Availability, Session,
+    Attendance, Announcement, Notification, Fee, PlayerFee, CoachEarning
+)
+
+import os
+import anthropic
+
+
+# ─── helpers ──────────────────────────────────────────────────────────────────
+
+def get_role(user):
+    try:
+        return user.profile.role
+    except Exception:
+        return 'player'
+
+
+def require_role(*roles):
+    def decorator(view_func):
+        def wrapper(request, *args, **kwargs):
+            if not request.user.is_authenticated:
+                return redirect('login')
+            if get_role(request.user) not in roles:
+                messages.error(request, "You don't have permission to do that.")
+                return redirect('dashboard')
+            return view_func(request, *args, **kwargs)
+        return wrapper
+    return decorator
+
+
+def send_notification(recipient, title, message, notif_type='general'):
+    Notification.objects.create(
+        recipient=recipient, title=title, message=message, notif_type=notif_type
+    )
+
+
+def apply_late_fees():
+    today = date.today()
+    overdue = PlayerFee.objects.filter(
+        status='pending',
+        fee__deadline__lt=today,
+        late_fee_applied=False
+    )
+    for pf in overdue:
+        pf.status = 'overdue'
+        if pf.fee.late_fee_amount > 0:
+            pf.amount_due += pf.fee.late_fee_amount
+            pf.late_fee_applied = True
+        pf.save()
+        send_notification(
+            pf.player,
+            'Payment Overdue',
+            f'Your payment for "{pf.fee.name}" is overdue. Late fee has been applied.',
+            'payment'
+        )
+
+
+# ─── auth ─────────────────────────────────────────────────────────────────────
+
+def home(request):
+    if request.user.is_authenticated:
+        return redirect('dashboard')
+    return redirect('login')
+
+
+def login_view(request):
+    if request.user.is_authenticated:
+        return redirect('dashboard')
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+        user = authenticate(request, username=username, password=password)
+        if user:
+            login(request, user)
+            return redirect('dashboard')
+        messages.error(request, 'Invalid username or password.')
+    return render(request, 'auth/login.html')
+
+
+def logout_view(request):
+    logout(request)
+    return redirect('login')
+
+
+def register_view(request):
+    if request.user.is_authenticated:
+        return redirect('dashboard')
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        email = request.POST.get('email')
+        password = request.POST.get('password')
+        first_name = request.POST.get('first_name')
+        last_name = request.POST.get('last_name')
+        role = request.POST.get('role', 'player')
+        if User.objects.filter(username=username).exists():
+            messages.error(request, 'Username already taken.')
+        else:
+            user = User.objects.create_user(
+                username=username, email=email, password=password,
+                first_name=first_name, last_name=last_name
+            )
+            UserProfile.objects.create(user=user, role=role)
+            login(request, user)
+            return redirect('dashboard')
+    return render(request, 'auth/register.html')
+
+
+# ─── dashboard ────────────────────────────────────────────────────────────────
+
+@login_required
+def dashboard(request):
+    apply_late_fees()
+    role = get_role(request.user)
+    ctx = {'role': role}
+
+    unread_count = Notification.objects.filter(recipient=request.user, is_read=False).count()
+    ctx['unread_count'] = unread_count
+
+    if role == 'coordinator':
+        ctx['teams'] = Team.objects.all()
+        ctx['total_players'] = User.objects.filter(profile__role='player').count()
+        ctx['total_coaches'] = User.objects.filter(profile__role='coach').count()
+        ctx['courts'] = Court.objects.filter(is_active=True)
+        ctx['upcoming_sessions'] = Session.objects.filter(
+            date__gte=date.today(), status='scheduled'
+        ).order_by('date', 'start_time')[:5]
+        # financial summary
+        total_collected = PlayerFee.objects.filter(status='paid').aggregate(s=Sum('amount_due'))['s'] or 0
+        total_pending = PlayerFee.objects.filter(status='pending').aggregate(s=Sum('amount_due'))['s'] or 0
+        total_overdue = PlayerFee.objects.filter(status='overdue').aggregate(s=Sum('amount_due'))['s'] or 0
+        ctx['total_collected'] = total_collected
+        ctx['total_pending'] = total_pending
+        ctx['total_overdue'] = total_overdue
+        ctx['announcements'] = Announcement.objects.all().order_by('-created_at')[:3]
+
+    elif role == 'coach':
+        coached_teams = request.user.coached_teams.all()
+        ctx['teams'] = coached_teams
+        ctx['upcoming_sessions'] = Session.objects.filter(
+            team__in=coached_teams, date__gte=date.today(), status='scheduled'
+        ).order_by('date', 'start_time')[:5]
+        ctx['recent_sessions'] = Session.objects.filter(
+            team__in=coached_teams, status='completed'
+        ).order_by('-date')[:3]
+        earnings = CoachEarning.objects.filter(coach=request.user)
+        ctx['total_earnings'] = earnings.aggregate(s=Sum('amount'))['s'] or 0
+        ctx['pending_earnings'] = earnings.filter(paid=False).aggregate(s=Sum('amount'))['s'] or 0
+        ctx['announcements'] = Announcement.objects.filter(
+            Q(team__in=coached_teams) | Q(scope='club')
+        ).order_by('-created_at')[:3]
+
+    else:  # player
+        player_teams = request.user.teams.all()
+        ctx['teams'] = player_teams
+        ctx['upcoming_sessions'] = Session.objects.filter(
+            team__in=player_teams, date__gte=date.today(), status='scheduled'
+        ).order_by('date', 'start_time')[:5]
+        ctx['pending_fees'] = PlayerFee.objects.filter(
+            player=request.user, status__in=['pending', 'overdue']
+        ).select_related('fee')
+        ctx['announcements'] = Announcement.objects.filter(
+            Q(team__in=player_teams) | Q(scope='club')
+        ).order_by('-created_at')[:3]
+
+    return render(request, 'dashboard.html', ctx)
+
+
+# ─── teams ────────────────────────────────────────────────────────────────────
+
+@login_required
+def teams_list(request):
+    role = get_role(request.user)
+    if role == 'coordinator':
+        teams = Team.objects.all()
+    elif role == 'coach':
+        teams = request.user.coached_teams.all()
+    else:
+        teams = Team.objects.all()
+    return render(request, 'teams/list.html', {'teams': teams, 'role': role})
+
+
+@login_required
+@require_role('coordinator')
+def team_create(request):
+    if request.method == 'POST':
+        name = request.POST.get('name')
+        description = request.POST.get('description', '')
+        team = Team.objects.create(
+            name=name, description=description, coordinator=request.user
+        )
+        messages.success(request, f'Team "{team.name}" created.')
+        return redirect('team_detail', pk=team.pk)
+    return render(request, 'teams/form.html', {'action': 'Create'})
+
+
+@login_required
+def team_detail(request, pk):
+    team = get_object_or_404(Team, pk=pk)
+    role = get_role(request.user)
+    all_coaches = User.objects.filter(profile__role='coach').exclude(id__in=team.coaches.all())
+    all_players = User.objects.filter(profile__role='player').exclude(id__in=team.players.all())
+    sessions = team.sessions.order_by('-date')[:10]
+    return render(request, 'teams/detail.html', {
+        'team': team, 'role': role,
+        'all_coaches': all_coaches, 'all_players': all_players,
+        'sessions': sessions,
+    })
+
+
+@login_required
+@require_role('coordinator')
+def team_edit(request, pk):
+    team = get_object_or_404(Team, pk=pk)
+    if request.method == 'POST':
+        team.name = request.POST.get('name')
+        team.description = request.POST.get('description', '')
+        team.save()
+        messages.success(request, 'Team updated.')
+        return redirect('team_detail', pk=pk)
+    return render(request, 'teams/form.html', {'team': team, 'action': 'Edit'})
+
+
+@login_required
+@require_role('coordinator')
+def team_delete(request, pk):
+    team = get_object_or_404(Team, pk=pk)
+    if request.method == 'POST':
+        team.delete()
+        messages.success(request, 'Team deleted.')
+        return redirect('teams_list')
+    return render(request, 'teams/confirm_delete.html', {'team': team})
+
+
+@login_required
+@require_role('coordinator')
+def assign_coach(request, pk):
+    team = get_object_or_404(Team, pk=pk)
+    if request.method == 'POST':
+        coach_id = request.POST.get('coach_id')
+        coach = get_object_or_404(User, pk=coach_id)
+        team.coaches.add(coach)
+        send_notification(coach, 'Assigned to Team', f'You have been assigned as coach of {team.name}.', 'general')
+        messages.success(request, f'{coach.username} assigned as coach.')
+    return redirect('team_detail', pk=pk)
+
+
+@login_required
+@require_role('coordinator')
+def remove_coach(request, pk, coach_id):
+    team = get_object_or_404(Team, pk=pk)
+    coach = get_object_or_404(User, pk=coach_id)
+    team.coaches.remove(coach)
+    messages.success(request, f'{coach.username} removed from coaching staff.')
+    return redirect('team_detail', pk=pk)
+
+
+@login_required
+@require_role('player')
+def join_team(request, pk):
+    team = get_object_or_404(Team, pk=pk)
+    if request.method == 'POST':
+        team.players.add(request.user)
+        messages.success(request, f'You joined {team.name}.')
+    return redirect('team_detail', pk=pk)
+
+
+@login_required
+@require_role('player')
+def leave_team(request, pk):
+    team = get_object_or_404(Team, pk=pk)
+    if request.method == 'POST':
+        team.players.remove(request.user)
+        messages.success(request, f'You left {team.name}.')
+    return redirect('teams_list')
+
+
+@login_required
+@require_role('coordinator', 'coach')
+def remove_player(request, pk, player_id):
+    team = get_object_or_404(Team, pk=pk)
+    player = get_object_or_404(User, pk=player_id)
+    if request.method == 'POST':
+        team.players.remove(player)
+        messages.success(request, f'{player.username} removed from team.')
+    return redirect('team_detail', pk=pk)
+
+
+# ─── availability ─────────────────────────────────────────────────────────────
+
+@login_required
+@require_role('player')
+def availability(request):
+    days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    slots = ['morning', 'afternoon', 'evening']
+    if request.method == 'POST':
+        Availability.objects.filter(player=request.user).delete()
+        for day in days:
+            for slot in slots:
+                if request.POST.get(f'{day}_{slot}'):
+                    Availability.objects.create(player=request.user, day=day, slot=slot)
+        messages.success(request, 'Availability updated.')
+        return redirect('availability')
+    user_avail = set(
+        Availability.objects.filter(player=request.user).values_list('day', 'slot')
+    )
+    return render(request, 'availability.html', {
+        'days': days, 'slots': slots, 'user_avail': user_avail
+    })
+
+
+# ─── sessions ─────────────────────────────────────────────────────────────────
+
+@login_required
+def sessions_list(request):
+    role = get_role(request.user)
+    if role == 'coordinator':
+        sessions = Session.objects.all().order_by('date', 'start_time')
+    elif role == 'coach':
+        sessions = Session.objects.filter(
+            team__in=request.user.coached_teams.all()
+        ).order_by('date', 'start_time')
+    else:
+        sessions = Session.objects.filter(
+            team__in=request.user.teams.all()
+        ).order_by('date', 'start_time')
+    return render(request, 'sessions/list.html', {'sessions': sessions, 'role': role})
+
+
+@login_required
+@require_role('coordinator', 'coach')
+def session_create(request):
+    role = get_role(request.user)
+    if role == 'coach':
+        teams = request.user.coached_teams.all()
+    else:
+        teams = Team.objects.all()
+    courts = Court.objects.filter(is_active=True)
+
+    if request.method == 'POST':
+        team_id = request.POST.get('team')
+        court_id = request.POST.get('court')
+        title = request.POST.get('title')
+        session_type = request.POST.get('session_type', 'training')
+        date_str = request.POST.get('date')
+        start_time = request.POST.get('start_time')
+        end_time = request.POST.get('end_time')
+        opponent = request.POST.get('opponent', '')
+        notes = request.POST.get('notes', '')
+
+        team = get_object_or_404(Team, pk=team_id)
+        court = Court.objects.filter(pk=court_id).first()
+
+        # conflict detection
+        conflicts = Session.objects.filter(
+            date=date_str, status='scheduled'
+        ).filter(
+            Q(court=court, court__isnull=False) |
+            Q(team=team)
+        ).filter(
+            start_time__lt=end_time, end_time__gt=start_time
+        )
+        if conflicts.exists():
+            conflict = conflicts.first()
+            messages.error(request, f'Scheduling conflict detected with: {conflict.title} at {conflict.start_time}')
+            return render(request, 'sessions/form.html', {
+                'teams': teams, 'courts': courts, 'action': 'Create'
+            })
+
+        session = Session.objects.create(
+            team=team, court=court, title=title, session_type=session_type,
+            date=date_str, start_time=start_time, end_time=end_time,
+            opponent=opponent, notes=notes, created_by=request.user
+        )
+        # notify players
+        for player in team.players.all():
+            send_notification(
+                player, 'New Session Scheduled',
+                f'{session.title} on {session.date} at {session.start_time}', 'session'
+            )
+        messages.success(request, 'Session created.')
+        return redirect('session_detail', pk=session.pk)
+
+    return render(request, 'sessions/form.html', {
+        'teams': teams, 'courts': courts, 'action': 'Create'
+    })
+
+
+@login_required
+def session_detail(request, pk):
+    session = get_object_or_404(Session, pk=pk)
+    role = get_role(request.user)
+    attendances = session.attendances.select_related('player')
+    return render(request, 'sessions/detail.html', {
+        'session': session, 'role': role, 'attendances': attendances
+    })
+
+
+@login_required
+@require_role('coordinator', 'coach')
+def session_edit(request, pk):
+    session = get_object_or_404(Session, pk=pk)
+    role = get_role(request.user)
+    if role == 'coach':
+        teams = request.user.coached_teams.all()
+    else:
+        teams = Team.objects.all()
+    courts = Court.objects.filter(is_active=True)
+
+    if request.method == 'POST':
+        session.title = request.POST.get('title')
+        session.session_type = request.POST.get('session_type', 'training')
+        session.date = request.POST.get('date')
+        session.start_time = request.POST.get('start_time')
+        session.end_time = request.POST.get('end_time')
+        session.opponent = request.POST.get('opponent', '')
+        session.notes = request.POST.get('notes', '')
+        court_id = request.POST.get('court')
+        session.court = Court.objects.filter(pk=court_id).first()
+        session.save()
+        messages.success(request, 'Session updated.')
+        return redirect('session_detail', pk=pk)
+
+    return render(request, 'sessions/form.html', {
+        'session': session, 'teams': teams, 'courts': courts, 'action': 'Edit'
+    })
+
+
+@login_required
+@require_role('coordinator', 'coach')
+def session_delete(request, pk):
+    session = get_object_or_404(Session, pk=pk)
+    if request.method == 'POST':
+        session.delete()
+        messages.success(request, 'Session deleted.')
+        return redirect('sessions_list')
+    return render(request, 'sessions/confirm_delete.html', {'session': session})
+
+
+@login_required
+@require_role('coordinator', 'coach')
+def manage_attendance(request, pk):
+    session = get_object_or_404(Session, pk=pk)
+    players = session.team.players.all()
+    if request.method == 'POST':
+        for player in players:
+            status = request.POST.get(f'status_{player.pk}', 'absent')
+            Attendance.objects.update_or_create(
+                session=session, player=player,
+                defaults={'status': status}
+            )
+        session.status = 'completed'
+        session.save()
+        messages.success(request, 'Attendance recorded.')
+        return redirect('session_detail', pk=pk)
+    existing = {a.player_id: a.status for a in session.attendances.all()}
+    return render(request, 'sessions/attendance.html', {
+        'session': session, 'players': players, 'existing': existing
+    })
+
+
+@login_required
+@require_role('coach')
+def ai_schedule(request):
+    coached_teams = request.user.coached_teams.all()
+    courts = Court.objects.filter(is_active=True)
+    recommendation = None
+
+    if request.method == 'POST':
+        team_id = request.POST.get('team')
+        date_from = request.POST.get('date_from')
+        date_to = request.POST.get('date_to')
+        prefer_weekdays = request.POST.get('prefer_weekdays') == 'on'
+        prefer_evenings = request.POST.get('prefer_evenings') == 'on'
+        prefer_weekends = request.POST.get('prefer_weekends') == 'on'
+        avoid_bad_weather = request.POST.get('avoid_bad_weather') == 'on'
+        selected_court_ids = request.POST.getlist('courts')
+
+        team = get_object_or_404(Team, pk=team_id)
+        selected_courts = Court.objects.filter(pk__in=selected_court_ids)
+
+        # Get player availabilities
+        players = team.players.all()
+        avail_summary = {}
+        for player in players:
+            avails = Availability.objects.filter(player=player)
+            for a in avails:
+                key = f"{a.day}_{a.slot}"
+                avail_summary[key] = avail_summary.get(key, 0) + 1
+
+        # Get weather from Open-Meteo for the date range
+        weather_info = "Weather data unavailable."
+        try:
+            weather_resp = requests.get(
+                'https://api.open-meteo.com/v1/forecast',
+                params={
+                    'latitude': 33.8938, 'longitude': 35.5018,
+                    'daily': 'precipitation_sum,weathercode',
+                    'timezone': 'Asia/Beirut',
+                    'start_date': date_from,
+                    'end_date': date_to,
+                },
+                timeout=5
+            )
+            weather_data = weather_resp.json()
+            daily = weather_data.get('daily', {})
+            weather_lines = []
+            for i, d in enumerate(daily.get('time', [])):
+                code = daily['weathercode'][i]
+                rain = daily['precipitation_sum'][i]
+                cond = 'Rainy' if rain > 2 else ('Cloudy' if code > 2 else 'Clear')
+                weather_lines.append(f"{d}: {cond}, precipitation {rain}mm")
+            weather_info = '\n'.join(weather_lines)
+        except Exception:
+            pass
+
+        # Build prompt for Claude
+        court_list = '\n'.join([f"- {c.name} ({'Indoor' if c.court_type == 'indoor' else 'Outdoor'})" for c in selected_courts])
+        avail_text = '\n'.join([f"- {k}: {v} players available" for k, v in sorted(avail_summary.items(), key=lambda x: -x[1])[:10]])
+
+        prompt = f"""You are a volleyball scheduling assistant for VolleyLB, a Lebanese volleyball club.
+
+Team: {team.name} ({players.count()} players)
+Date Range: {date_from} to {date_to}
+Preferences: {'Weekdays' if prefer_weekdays else ''} {'Evenings' if prefer_evenings else ''} {'Weekends' if prefer_weekends else ''}
+Avoid bad weather: {avoid_bad_weather}
+
+Available Courts:
+{court_list}
+
+Player Availability Summary (day_slot: number of players available):
+{avail_text}
+
+Weather Forecast for date range:
+{weather_info}
+
+Analyze the above and recommend ONE optimal training session. Consider:
+1. Maximum player attendance based on availability
+2. Weather (avoid outdoor courts on rainy days if requested)
+3. Court availability
+4. Preferred time slots
+
+Respond in this EXACT JSON format:
+{{
+  "date": "YYYY-MM-DD",
+  "start_time": "HH:MM",
+  "end_time": "HH:MM",
+  "court": "Court Name",
+  "reason": "Brief explanation of why this slot was chosen",
+  "analysis_points": ["point 1", "point 2", "point 3"]
+}}"""
+
+        try:
+            api_key = os.environ.get('ANTHROPIC_API_KEY', '')
+            client = anthropic.Anthropic(api_key=api_key)
+            response = client.messages.create(
+                model='claude-sonnet-4-20250514',
+                max_tokens=1000,
+                messages=[{'role': 'user', 'content': prompt}]
+            )
+            text = response.content[0].text.strip()
+            # extract JSON
+            if '```' in text:
+                text = text.split('```')[1]
+                if text.startswith('json'):
+                    text = text[4:]
+            recommendation = json.loads(text)
+        except Exception as e:
+            messages.error(request, f'AI scheduling failed: {str(e)}')
+
+    return render(request, 'sessions/ai_schedule.html', {
+        'teams': coached_teams, 'courts': courts, 'recommendation': recommendation
+    })
+
+
+# ─── courts ───────────────────────────────────────────────────────────────────
+
+@login_required
+def courts_list(request):
+    courts = Court.objects.all()
+    role = get_role(request.user)
+    return render(request, 'courts/list.html', {'courts': courts, 'role': role})
+
+
+@login_required
+@require_role('coordinator')
+def court_create(request):
+    if request.method == 'POST':
+        Court.objects.create(
+            name=request.POST.get('name'),
+            location=request.POST.get('location'),
+            court_type=request.POST.get('court_type', 'indoor'),
+            capacity=request.POST.get('capacity', 20),
+        )
+        messages.success(request, 'Court created.')
+        return redirect('courts_list')
+    return render(request, 'courts/form.html', {'action': 'Create'})
+
+
+@login_required
+@require_role('coordinator')
+def court_edit(request, pk):
+    court = get_object_or_404(Court, pk=pk)
+    if request.method == 'POST':
+        court.name = request.POST.get('name')
+        court.location = request.POST.get('location')
+        court.court_type = request.POST.get('court_type', 'indoor')
+        court.capacity = request.POST.get('capacity', 20)
+        court.is_active = request.POST.get('is_active') == 'on'
+        court.save()
+        messages.success(request, 'Court updated.')
+        return redirect('courts_list')
+    return render(request, 'courts/form.html', {'court': court, 'action': 'Edit'})
+
+
+@login_required
+@require_role('coordinator')
+def court_delete(request, pk):
+    court = get_object_or_404(Court, pk=pk)
+    if request.method == 'POST':
+        court.delete()
+        messages.success(request, 'Court deleted.')
+        return redirect('courts_list')
+    return render(request, 'courts/confirm_delete.html', {'court': court})
+
+
+# ─── announcements ────────────────────────────────────────────────────────────
+
+@login_required
+def announcements_list(request):
+    role = get_role(request.user)
+    if role == 'coordinator':
+        announcements = Announcement.objects.all().order_by('-created_at')
+    elif role == 'coach':
+        announcements = Announcement.objects.filter(
+            Q(team__in=request.user.coached_teams.all()) | Q(scope='club')
+        ).order_by('-created_at')
+    else:
+        announcements = Announcement.objects.filter(
+            Q(team__in=request.user.teams.all()) | Q(scope='club')
+        ).order_by('-created_at')
+    return render(request, 'announcements/list.html', {'announcements': announcements, 'role': role})
+
+
+@login_required
+@require_role('coordinator', 'coach')
+def announcement_create(request):
+    role = get_role(request.user)
+    if role == 'coach':
+        teams = request.user.coached_teams.all()
+    else:
+        teams = Team.objects.all()
+
+    if request.method == 'POST':
+        title = request.POST.get('title')
+        content = request.POST.get('content')
+        scope = request.POST.get('scope', 'team')
+        team_id = request.POST.get('team')
+        team = Team.objects.filter(pk=team_id).first() if team_id else None
+
+        ann = Announcement.objects.create(
+            title=title, content=content, scope=scope,
+            team=team, author=request.user
+        )
+
+        # notify
+        if scope == 'club':
+            recipients = User.objects.all()
+        else:
+            recipients = team.players.all() if team else User.objects.none()
+
+        for u in recipients:
+            send_notification(u, f'Announcement: {title}', content, 'announcement')
+
+        messages.success(request, 'Announcement posted.')
+        return redirect('announcements_list')
+
+    return render(request, 'announcements/form.html', {'teams': teams, 'role': role})
+
+
+# ─── notifications ────────────────────────────────────────────────────────────
+
+@login_required
+def notifications_list(request):
+    notifs = Notification.objects.filter(recipient=request.user).order_by('-created_at')
+    return render(request, 'notifications/list.html', {'notifications': notifs})
+
+
+@login_required
+def mark_notification_read(request, pk):
+    notif = get_object_or_404(Notification, pk=pk, recipient=request.user)
+    notif.is_read = True
+    notif.save()
+    return redirect('notifications_list')
+
+
+@login_required
+def mark_all_read(request):
+    Notification.objects.filter(recipient=request.user, is_read=False).update(is_read=True)
+    return redirect('notifications_list')
+
+
+# ─── fees ─────────────────────────────────────────────────────────────────────
+
+@login_required
+def fees_list(request):
+    role = get_role(request.user)
+    if role == 'coordinator':
+        fees = Fee.objects.all().order_by('-created_at')
+        return render(request, 'fees/list.html', {'fees': fees, 'role': role})
+    else:
+        player_fees = PlayerFee.objects.filter(player=request.user).select_related('fee').order_by('-fee__deadline')
+        return render(request, 'fees/player_fees.html', {'player_fees': player_fees, 'role': role})
+
+
+@login_required
+@require_role('coordinator')
+def fee_create(request):
+    teams = Team.objects.all()
+    if request.method == 'POST':
+        fee = Fee.objects.create(
+            name=request.POST.get('name'),
+            amount=request.POST.get('amount'),
+            late_fee_amount=request.POST.get('late_fee_amount', 0),
+            deadline=request.POST.get('deadline'),
+            team=Team.objects.filter(pk=request.POST.get('team')).first(),
+            created_by=request.user,
+        )
+        messages.success(request, f'Fee "{fee.name}" created.')
+        return redirect('fee_detail', pk=fee.pk)
+    return render(request, 'fees/form.html', {'teams': teams})
+
+
+@login_required
+@require_role('coordinator')
+def fee_detail(request, pk):
+    fee = get_object_or_404(Fee, pk=pk)
+    player_fees = PlayerFee.objects.filter(fee=fee).select_related('player')
+    all_players = User.objects.filter(profile__role='player').exclude(
+        id__in=player_fees.values_list('player_id', flat=True)
+    )
+    return render(request, 'fees/detail.html', {
+        'fee': fee, 'player_fees': player_fees, 'all_players': all_players
+    })
+
+
+@login_required
+@require_role('coordinator')
+def fee_assign(request, pk):
+    fee = get_object_or_404(Fee, pk=pk)
+    if request.method == 'POST':
+        assign_type = request.POST.get('assign_type')
+        if assign_type == 'team':
+            team_id = request.POST.get('team_id')
+            team = get_object_or_404(Team, pk=team_id)
+            for player in team.players.all():
+                pf, created = PlayerFee.objects.get_or_create(
+                    fee=fee, player=player,
+                    defaults={'amount_due': fee.amount, 'status': 'pending'}
+                )
+                if created:
+                    send_notification(
+                        player, 'New Fee Assigned',
+                        f'You have been assigned fee: {fee.name} (${fee.amount}) due {fee.deadline}', 'payment'
+                    )
+        else:
+            player_ids = request.POST.getlist('player_ids')
+            for pid in player_ids:
+                player = User.objects.filter(pk=pid).first()
+                if player:
+                    pf, created = PlayerFee.objects.get_or_create(
+                        fee=fee, player=player,
+                        defaults={'amount_due': fee.amount, 'status': 'pending'}
+                    )
+                    if created:
+                        send_notification(
+                            player, 'New Fee Assigned',
+                            f'You have been assigned fee: {fee.name} (${fee.amount}) due {fee.deadline}', 'payment'
+                        )
+        messages.success(request, 'Fee assigned.')
+    return redirect('fee_detail', pk=pk)
+
+
+@login_required
+def pay_fee(request, pk):
+    pf = get_object_or_404(PlayerFee, pk=pk, player=request.user)
+    if request.method == 'POST':
+        pf.status = 'paid'
+        pf.paid_at = timezone.now()
+        pf.save()
+        send_notification(
+            request.user, 'Payment Confirmed',
+            f'Your payment for "{pf.fee.name}" has been marked as paid.', 'payment'
+        )
+        messages.success(request, 'Payment marked as paid.')
+    return redirect('fees_list')
+
+
+@login_required
+@require_role('coordinator')
+def financial_summary(request):
+    apply_late_fees()
+    total_collected = PlayerFee.objects.filter(status='paid').aggregate(s=Sum('amount_due'))['s'] or 0
+    total_pending = PlayerFee.objects.filter(status='pending').aggregate(s=Sum('amount_due'))['s'] or 0
+    total_overdue = PlayerFee.objects.filter(status='overdue').aggregate(s=Sum('amount_due'))['s'] or 0
+    fees = Fee.objects.all().order_by('-created_at')
+    return render(request, 'fees/summary.html', {
+        'total_collected': total_collected,
+        'total_pending': total_pending,
+        'total_overdue': total_overdue,
+        'fees': fees,
+    })
+
+
+# ─── earnings ────────────────────────────────────────────────────────────────
+
+@login_required
+@require_role('coach')
+def earnings_list(request):
+    earnings = CoachEarning.objects.filter(coach=request.user).select_related('session').order_by('-session__date')
+    total = earnings.aggregate(s=Sum('amount'))['s'] or 0
+    paid_total = earnings.filter(paid=True).aggregate(s=Sum('amount'))['s'] or 0
+    pending_total = earnings.filter(paid=False).aggregate(s=Sum('amount'))['s'] or 0
+    return render(request, 'earnings/list.html', {
+        'earnings': earnings, 'total': total,
+        'paid_total': paid_total, 'pending_total': pending_total
+    })
+
+
+# ─── users ────────────────────────────────────────────────────────────────────
+
+@login_required
+@require_role('coordinator')
+def users_list(request):
+    users = User.objects.select_related('profile').all().order_by('profile__role', 'username')
+    return render(request, 'users/list.html', {'users': users})
+
+
+@login_required
+@require_role('coordinator')
+def user_edit(request, pk):
+    target = get_object_or_404(User, pk=pk)
+    if request.method == 'POST':
+        target.first_name = request.POST.get('first_name', '')
+        target.last_name = request.POST.get('last_name', '')
+        target.email = request.POST.get('email', '')
+        target.save()
+        profile = target.profile
+        profile.role = request.POST.get('role', profile.role)
+        profile.jersey_number = request.POST.get('jersey_number') or None
+        profile.position = request.POST.get('position', '')
+        profile.save()
+        messages.success(request, 'User updated.')
+        return redirect('users_list')
+    return render(request, 'users/edit.html', {'target': target})

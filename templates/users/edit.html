@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}Edit User — VolleyLB{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div><a href="{% url 'users_list' %}" class="text-muted" style="font-size:0.85rem">← Back to Users</a>
+  <div class="page-title">Edit <span>User</span></div>
+  <div class="text-muted">@{{ target.username }}</div></div>
+</div>
+<div class="card" style="max-width:520px">
+  <form method="post">
+    {% csrf_token %}
+    <div class="grid-2">
+      <div class="form-group"><label>First Name</label><input type="text" name="first_name" value="{{ target.first_name }}"></div>
+      <div class="form-group"><label>Last Name</label><input type="text" name="last_name" value="{{ target.last_name }}"></div>
+    </div>
+    <div class="form-group"><label>Email</label><input type="email" name="email" value="{{ target.email }}"></div>
+    <div class="form-group">
+      <label>Role</label>
+      <select name="role">
+        <option value="player" {% if target.profile.role == 'player' %}selected{% endif %}>Player</option>
+        <option value="coach" {% if target.profile.role == 'coach' %}selected{% endif %}>Coach</option>
+        <option value="coordinator" {% if target.profile.role == 'coordinator' %}selected{% endif %}>Coordinator</option>
+      </select>
+    </div>
+    <div class="grid-2">
+      <div class="form-group"><label>Jersey Number</label><input type="number" name="jersey_number" value="{{ target.profile.jersey_number|default:'' }}" placeholder="e.g. 7"></div>
+      <div class="form-group"><label>Position</label><input type="text" name="position" value="{{ target.profile.position }}" placeholder="e.g. Libero"></div>
+    </div>
+    <div style="display:flex;gap:0.75rem">
+      <button type="submit" class="btn btn-primary">Save Changes</button>
+      <a href="{% url 'users_list' %}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

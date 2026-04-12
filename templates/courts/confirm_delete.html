@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="card" style="max-width:480px">
+  <div class="card-title" style="font-size:1.4rem;margin-bottom:1rem">🗑️ Delete Court</div>
+  <p class="text-muted mb-2">Delete <strong style="color:var(--text-white)">{{ court.name }}</strong>?</p>
+  <form method="post" style="display:flex;gap:0.75rem">{% csrf_token %}
+    <button type="submit" class="btn btn-danger">Delete</button>
+    <a href="{% url 'courts_list' %}" class="btn btn-secondary">Cancel</a>
+  </form>
+</div>
+{% endblock %}

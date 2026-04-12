@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}Fees — VolleyLB{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div class="page-title">Fee <span>Management</span></div>
+  <div class="topbar-actions">
+    <a href="{% url 'financial_summary' %}" class="btn btn-secondary">📊 Summary</a>
+    <a href="{% url 'fee_create' %}" class="btn btn-primary">+ Create Fee</a>
+  </div>
+</div>
+<div class="grid-3">
+  {% for fee in fees %}
+  <a href="{% url 'fee_detail' fee.pk %}" class="card" style="text-decoration:none;display:block">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem">
+      <div style="font-family:'Bebas Neue',cursive;font-size:1.2rem;letter-spacing:1px">{{ fee.name }}</div>
+      {% if fee.team %}<span class="badge badge-info">{{ fee.team.name }}</span>{% else %}<span class="badge badge-orange">All</span>{% endif %}
+    </div>
+    <div style="font-family:'Bebas Neue',cursive;font-size:2rem;color:var(--orange)">${{ fee.amount }}</div>
+    {% if fee.late_fee_amount > 0 %}<div class="text-muted" style="font-size:0.78rem">+${{ fee.late_fee_amount }} late fee</div>{% endif %}
+    <div class="divider"></div>
+    <div style="display:flex;justify-content:space-between">
+      <div class="text-muted" style="font-size:0.8rem">Due {{ fee.deadline }}</div>
+      <div class="text-muted" style="font-size:0.8rem">{{ fee.player_fees.count }} assigned</div>
+    </div>
+  </a>
+  {% empty %}
+  <div class="empty-state" style="grid-column:1/-1"><div class="icon">💰</div><p>No fees created yet.</p>
+  <a href="{% url 'fee_create' %}" class="btn btn-primary mt-2">Create First Fee</a></div>
+  {% endfor %}
+</div>
+{% endblock %}

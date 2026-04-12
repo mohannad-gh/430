@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}Announcements — VolleyLB{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div class="page-title">Announce<span>ments</span></div>
+  <div class="topbar-actions">
+    {% if role == 'coordinator' or role == 'coach' %}
+    <a href="{% url 'announcement_create' %}" class="btn btn-primary">+ Post Announcement</a>
+    {% endif %}
+  </div>
+</div>
+{% for a in announcements %}
+<div class="card mb-2">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:0.75rem">
+    <div>
+      <div style="font-family:'Bebas Neue',cursive;font-size:1.2rem;letter-spacing:1px">{{ a.title }}</div>
+      <div class="text-muted" style="font-size:0.8rem;margin-top:0.25rem">
+        Posted by <strong>{{ a.author.username }}</strong> · {{ a.created_at|date:"M d, Y H:i" }}
+        {% if a.team %} · {{ a.team.name }}{% endif %}
+      </div>
+    </div>
+    <span class="badge badge-{% if a.scope == 'club' %}orange{% else %}info{% endif %}">
+      {% if a.scope == 'club' %}📣 Club-wide{% else %}👥 Team{% endif %}
+    </span>
+  </div>
+  <div style="font-size:0.95rem;color:var(--text-light);line-height:1.6">{{ a.content }}</div>
+</div>
+{% empty %}
+<div class="empty-state"><div class="icon">📢</div><p>No announcements yet.</p>
+{% if role == 'coordinator' or role == 'coach' %}
+<a href="{% url 'announcement_create' %}" class="btn btn-primary mt-2">Post First Announcement</a>
+{% endif %}
+</div>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% block title %}Users — VolleyLB{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div class="page-title">User <span>Management</span></div>
+  <div class="topbar-actions"><a href="{% url 'register' %}" class="btn btn-primary">+ Add User</a></div>
+</div>
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>User</th><th>Role</th><th>Email</th><th>Teams</th><th>Action</th></tr></thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>
+            <div style="display:flex;align-items:center;gap:0.6rem">
+              <div class="user-avatar" style="width:32px;height:32px;font-size:0.8rem">{{ u.username|first|upper }}</div>
+              <div>
+                <div style="font-weight:600">{{ u.get_full_name|default:u.username }}</div>
+                <div class="text-muted" style="font-size:0.75rem">@{{ u.username }}</div>
+              </div>
+            </div>
+          </td>
+          <td><span class="badge badge-{{ u.profile.role }}">{{ u.profile.role }}</span></td>
+          <td class="text-muted" style="font-size:0.85rem">{{ u.email|default:"—" }}</td>
+          <td class="text-muted" style="font-size:0.85rem">
+            {% if u.profile.role == 'player' %}{{ u.teams.count }} teams
+            {% elif u.profile.role == 'coach' %}{{ u.coached_teams.count }} teams
+            {% else %}—{% endif %}
+          </td>
+          <td><a href="{% url 'user_edit' u.pk %}" class="btn btn-secondary btn-sm">✏️ Edit</a></td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" class="empty-state">No users found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

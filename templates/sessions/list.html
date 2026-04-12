@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+{% block title %}Sessions — VolleyLB{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div class="page-title">Ses<span>sions</span></div>
+  <div class="topbar-actions">
+    {% if role == 'coach' or role == 'coordinator' %}
+    <a href="{% url 'session_create' %}" class="btn btn-primary">+ New Session</a>
+    {% if role == 'coach' %}<a href="{% url 'ai_schedule' %}" class="btn btn-secondary">🧠 AI Schedule</a>{% endif %}
+    {% endif %}
+  </div>
+</div>
+
+{% regroup sessions by date as sessions_by_date %}
+{% for day in sessions_by_date %}
+<div style="margin-bottom:1.5rem">
+  <div style="font-family:'Bebas Neue',cursive;font-size:1rem;letter-spacing:2px;color:var(--text-muted);margin-bottom:0.5rem">
+    {{ day.grouper|date:"l, F j, Y" }}
+  </div>
+  {% for s in day.list %}
+  <a href="{% url 'session_detail' s.pk %}" class="session-item" style="color:inherit">
+    <div class="session-date-box" style="background:{% if s.session_type == 'match' %}var(--orange){% else %}var(--purple-mid){% endif %}">
+      <div class="session-date-day">{{ s.date|date:"d" }}</div>
+      <div class="session-date-month">{{ s.date|date:"M" }}</div>
+    </div>
+    <div class="session-info">
+      <div class="session-title">{{ s.title }}</div>
+      <div class="session-meta">
+        {{ s.team.name }} · {{ s.start_time|time:"H:i" }}–{{ s.end_time|time:"H:i" }} · {{ s.court.name|default:"Court TBD" }}
+        {% if s.ai_generated %}<span class="badge badge-info" style="margin-left:0.5rem">🧠 AI</span>{% endif %}
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.3rem">
+      <span class="badge badge-{% if s.session_type == 'match' %}orange{% else %}info{% endif %}">{{ s.session_type }}</span>
+      <span class="badge badge-{% if s.status == 'completed' %}success{% elif s.status == 'cancelled' %}danger{% else %}gray{% endif %}">{{ s.status }}</span>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% empty %}
+<div class="empty-state"><div class="icon">📅</div><p>No sessions found.</p>
+{% if role == 'coach' or role == 'coordinator' %}
+<a href="{% url 'session_create' %}" class="btn btn-primary mt-2">Create First Session</a>
+{% endif %}
+</div>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+{% block title %}{{ team.name }} — VolleyLB{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <a href="{% url 'teams_list' %}" class="text-muted" style="font-size:0.85rem">← Back to Teams</a>
+    <div class="page-title">{{ team.name }}</div>
+    {% if team.description %}<div class="text-muted">{{ team.description }}</div>{% endif %}
+  </div>
+  <div class="topbar-actions">
+    {% if role == 'coordinator' %}
+    <a href="{% url 'team_edit' team.pk %}" class="btn btn-secondary">✏️ Edit</a>
+    <a href="{% url 'team_delete' team.pk %}" class="btn btn-danger">🗑️ Delete</a>
+    {% endif %}
+    {% if role == 'player' and request.user not in team.players.all %}
+    <form method="post" action="{% url 'join_team' team.pk %}">{% csrf_token %}<button class="btn btn-primary">+ Join Team</button></form>
+    {% elif role == 'player' and request.user in team.players.all %}
+    <form method="post" action="{% url 'leave_team' team.pk %}">{% csrf_token %}<button class="btn btn-danger">Leave Team</button></form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="grid-2">
+  <!-- Coaches -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">🎓 Coaching Staff</div>
+      {% if role == 'coordinator' and all_coaches %}
+      <button onclick="document.getElementById('assign-coach-form').style.display=document.getElementById('assign-coach-form').style.display==='none'?'block':'none'" class="btn btn-secondary btn-sm">+ Assign Coach</button>
+      {% endif %}
+    </div>
+    {% if role == 'coordinator' %}
+    <div id="assign-coach-form" style="display:none;margin-bottom:1rem">
+      <form method="post" action="{% url 'assign_coach' team.pk %}" style="display:flex;gap:0.5rem">
+        {% csrf_token %}
+        <select name="coach_id" style="flex:1">
+          {% for c in all_coaches %}<option value="{{ c.pk }}">{{ c.get_full_name|default:c.username }}</option>{% endfor %}
+        </select>
+        <button class="btn btn-primary btn-sm">Assign</button>
+      </form>
+    </div>
+    {% endif %}
+    {% for coach in team.coaches.all %}
+    <div class="member-pill" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;border-radius:10px;padding:0.75rem">
+      <div style="display:flex;align-items:center;gap:0.5rem">
+        <div class="user-avatar" style="width:32px;height:32px;font-size:0.85rem">{{ coach.username|first|upper }}</div>
+        <div>
+          <div style="font-weight:600;font-size:0.9rem">{{ coach.get_full_name|default:coach.username }}</div>
+          <span class="badge badge-coach">Coach</span>
+        </div>
+      </div>
+      {% if role == 'coordinator' %}
+      <form method="post" action="{% url 'remove_coach' team.pk coach.pk %}">{% csrf_token %}<button class="btn btn-danger btn-sm">Remove</button></form>
+      {% endif %}
+    </div>
+    {% empty %}<div class="text-muted" style="font-size:0.85rem">No coaches assigned yet.</div>{% endfor %}
+  </div>
+
+  <!-- Players -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">🏐 Players ({{ team.players.count }})</div>
+    </div>
+    {% for player in team.players.all %}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;padding:0.75rem;background:var(--bg-card2);border-radius:10px">
+      <div style="display:flex;align-items:center;gap:0.5rem">
+        <div class="user-avatar" style="width:32px;height:32px;font-size:0.85rem">{{ player.username|first|upper }}</div>
+        <div>
+          <div style="font-weight:600;font-size:0.9rem">{{ player.get_full_name|default:player.username }}</div>
+          {% if player.profile.jersey_number %}<span class="text-muted" style="font-size:0.75rem">#{{ player.profile.jersey_number }} · {{ player.profile.position }}</span>{% endif %}
+        </div>
+      </div>
+      {% if role == 'coordinator' or role == 'coach' %}
+      <form method="post" action="{% url 'remove_player' team.pk player.pk %}">{% csrf_token %}<button class="btn btn-danger btn-sm">Remove</button></form>
+      {% endif %}
+    </div>
+    {% empty %}<div class="text-muted" style="font-size:0.85rem">No players yet.</div>{% endfor %}
+  </div>
+</div>
+
+<!-- Sessions -->
+<div class="card mt-3">
+  <div class="card-header">
+    <div class="card-title">📅 Recent Sessions</div>
+    {% if role == 'coach' or role == 'coordinator' %}
+    <a href="{% url 'session_create' %}" class="btn btn-primary btn-sm">+ New Session</a>
+    {% endif %}
+  </div>
+  {% for s in sessions %}
+  <a href="{% url 'session_detail' s.pk %}" class="session-item" style="color:inherit">
+    <div class="session-date-box">
+      <div class="session-date-day">{{ s.date|date:"d" }}</div>
+      <div class="session-date-month">{{ s.date|date:"M" }}</div>
+    </div>
+    <div class="session-info">
+      <div class="session-title">{{ s.title }}</div>
+      <div class="session-meta">{{ s.start_time|time:"H:i" }} — {{ s.end_time|time:"H:i" }} · {{ s.court.name|default:"TBD" }}</div>
+    </div>
+    <span class="badge badge-{% if s.status == 'completed' %}success{% elif s.status == 'cancelled' %}danger{% else %}info{% endif %}">{{ s.status }}</span>
+  </a>
+  {% empty %}<div class="empty-state"><div class="icon">📅</div>No sessions yet</div>{% endfor %}
+</div>
+{% endblock %}

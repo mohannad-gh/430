@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}{{ action }} Court — VolleyLB{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div><a href="{% url 'courts_list' %}" class="text-muted" style="font-size:0.85rem">← Back</a>
+  <div class="page-title">{{ action }} <span>Court</span></div></div>
+</div>
+<div class="card" style="max-width:520px">
+  <form method="post">
+    {% csrf_token %}
+    <div class="form-group"><label>Court Name</label><input type="text" name="name" value="{{ court.name|default:'' }}" required placeholder="e.g. Main Sports Hall"></div>
+    <div class="form-group"><label>Location</label><input type="text" name="location" value="{{ court.location|default:'' }}" required placeholder="e.g. Beirut Sports City"></div>
+    <div class="grid-2">
+      <div class="form-group"><label>Type</label>
+        <select name="court_type">
+          <option value="indoor" {% if court.court_type == 'indoor' %}selected{% endif %}>Indoor</option>
+          <option value="outdoor" {% if court.court_type == 'outdoor' %}selected{% endif %}>Outdoor</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Capacity</label><input type="number" name="capacity" value="{{ court.capacity|default:20 }}" min="1"></div>
+    </div>
+    {% if court %}
+    <div class="form-group"><label class="checkbox-label"><input type="checkbox" name="is_active" {% if court.is_active %}checked{% endif %}> Court is Active</label></div>
+    {% endif %}
+    <div style="display:flex;gap:0.75rem">
+      <button type="submit" class="btn btn-primary">{{ action }} Court</button>
+      <a href="{% url 'courts_list' %}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
