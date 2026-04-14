@@ -43,6 +43,48 @@ class Team(models.Model):
         return self.name
 
 
+class TeamJoinRequest(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('accepted', 'Accepted'),
+        ('rejected', 'Rejected'),
+    ]
+
+    team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name='join_requests')
+    player = models.ForeignKey(User, on_delete=models.CASCADE, related_name='team_join_requests')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
+    created_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='reviewed_join_requests')
+
+    class Meta:
+        unique_together = ('team', 'player')
+
+    def __str__(self):
+        return f"{self.player.username} -> {self.team.name} ({self.status})"
+
+
+class TeamLeaveRequest(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('accepted', 'Accepted'),
+        ('rejected', 'Rejected'),
+    ]
+
+    team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name='leave_requests')
+    player = models.ForeignKey(User, on_delete=models.CASCADE, related_name='team_leave_requests')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
+    created_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='reviewed_leave_requests')
+
+    class Meta:
+        unique_together = ('team', 'player')
+
+    def __str__(self):
+        return f"{self.player.username} <- {self.team.name} ({self.status})"
+
+
 class Availability(models.Model):
     DAY_CHOICES = [
         ('monday', 'Monday'), ('tuesday', 'Tuesday'), ('wednesday', 'Wednesday'),

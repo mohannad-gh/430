@@ -19,8 +19,13 @@ urlpatterns = [
     path('teams/<int:pk>/delete/', views.team_delete, name='team_delete'),
     path('teams/<int:pk>/assign-coach/', views.assign_coach, name='assign_coach'),
     path('teams/<int:pk>/remove-coach/<int:coach_id>/', views.remove_coach, name='remove_coach'),
-    path('teams/<int:pk>/join/', views.join_team, name='join_team'),
+    path('teams/<int:pk>/request-join/', views.request_join_team, name='request_join_team'),
+    path('teams/<int:pk>/request-leave/', views.request_leave_team, name='request_leave_team'),
     path('teams/<int:pk>/leave/', views.leave_team, name='leave_team'),
+    path('teams/<int:pk>/requests/', views.team_join_requests, name='team_join_requests'),
+    path('teams/<int:pk>/requests/<int:request_id>/review/', views.review_join_request, name='review_join_request'),
+    path('teams/<int:pk>/leave-requests/', views.team_leave_requests, name='team_leave_requests'),
+    path('teams/<int:pk>/leave-requests/<int:request_id>/review/', views.review_leave_request, name='review_leave_request'),
     path('teams/<int:pk>/remove-player/<int:player_id>/', views.remove_player, name='remove_player'),
 
     # Availability

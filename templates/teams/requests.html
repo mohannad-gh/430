@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block title %}{{ team.name }} Requests — VolleyLB{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <a href="{% url 'team_detail' team.pk %}" class="text-muted" style="font-size:0.85rem">← Back to Team</a>
+    <div class="page-title">Join Requests — {{ team.name }}</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">Pending Requests</div>
+  </div>
+  {% if pending %}
+    {% for r in pending %}
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:0.75rem;border-bottom:1px solid var(--border)">
+        <div>
+          <div style="font-weight:600">{{ r.player.get_full_name|default:r.player.username }}</div>
+          <div class="text-muted" style="font-size:0.85rem">Requested at {{ r.created_at }}</div>
+        </div>
+        <div style="display:flex;gap:0.5rem">
+          <form method="post" action="{% url 'review_join_request' team.pk r.pk %}">{% csrf_token %}
+            <input type="hidden" name="action" value="accept">
+            <button class="btn btn-primary btn-sm">Accept</button>
+          </form>
+          <form method="post" action="{% url 'review_join_request' team.pk r.pk %}">{% csrf_token %}
+            <input type="hidden" name="action" value="reject">
+            <button class="btn btn-danger btn-sm">Reject</button>
+          </form>
+        </div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state">No pending requests</div>
+  {% endif %}
+</div>
+{% endblock %}

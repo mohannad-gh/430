@@ -16,6 +16,9 @@ from .models import (
     UserProfile, Team, Court, Availability, Session,
     Attendance, Announcement, Notification, Fee, PlayerFee, CoachEarning
 )
+from django.utils import timezone
+from .models import TeamJoinRequest
+from .models import TeamLeaveRequest
 
 import os
 import anthropic
@@ -274,9 +277,148 @@ def remove_coach(request, pk, coach_id):
 def join_team(request, pk):
     team = get_object_or_404(Team, pk=pk)
     if request.method == 'POST':
+        # legacy direct join - keep for coordinator override but generally use requests
         team.players.add(request.user)
         messages.success(request, f'You joined {team.name}.')
     return redirect('team_detail', pk=pk)
+
+
+@login_required
+@require_role('player')
+def request_join_team(request, pk):
+    team = get_object_or_404(Team, pk=pk)
+    if request.method == 'POST':
+        # don't duplicate requests or if already a member
+        if request.user in team.players.all():
+            messages.info(request, 'You are already a member of this team.')
+            return redirect('team_detail', pk=pk)
+        req, created = TeamJoinRequest.objects.get_or_create(team=team, player=request.user)
+        if not created and req.status == 'pending':
+            messages.info(request, 'You already have a pending request.')
+        else:
+            # if previously rejected or accepted, reset to pending
+            req.status = 'pending'
+            req.created_at = timezone.now()
+            req.reviewed_at = None
+            req.reviewed_by = None
+            req.save()
+            messages.success(request, 'Request sent to coach(es) for approval.')
+            # notify coaches and coordinator
+            recipients = list(team.coaches.all())
+            if team.coordinator:
+                recipients.append(team.coordinator)
+            for r in set(recipients):
+                send_notification(r, 'Join Request', f'{request.user.get_full_name() or request.user.username} requested to join {team.name}.', 'general')
+    return redirect('team_detail', pk=pk)
+
+
+@login_required
+@require_role('player')
+def request_leave_team(request, pk):
+    team = get_object_or_404(Team, pk=pk)
+    if request.method == 'POST':
+        if request.user not in team.players.all():
+            messages.info(request, 'You are not a member of this team.')
+            return redirect('team_detail', pk=pk)
+        req, created = TeamLeaveRequest.objects.get_or_create(team=team, player=request.user)
+        if not created and req.status == 'pending':
+            messages.info(request, 'You already have a pending leave request.')
+        else:
+            req.status = 'pending'
+            req.created_at = timezone.now()
+            req.reviewed_at = None
+            req.reviewed_by = None
+            req.save()
+            messages.success(request, 'Leave request sent to coach(es) for approval.')
+            recipients = list(team.coaches.all())
+            if team.coordinator:
+                recipients.append(team.coordinator)
+            for r in set(recipients):
+                send_notification(r, 'Leave Request', f'{request.user.get_full_name() or request.user.username} requested to leave {team.name}.', 'general')
+    return redirect('team_detail', pk=pk)
+
+
+@login_required
+@require_role('coordinator', 'coach')
+def team_leave_requests(request, pk):
+    team = get_object_or_404(Team, pk=pk)
+    role = get_role(request.user)
+    if role == 'coach' and request.user not in team.coaches.all():
+        messages.error(request, "You don't have permission to view leave requests for this team.")
+        return redirect('team_detail', pk=pk)
+    pending = team.leave_requests.filter(status='pending').order_by('created_at')
+    return render(request, 'teams/leave_requests.html', {'team': team, 'pending': pending})
+
+
+@login_required
+@require_role('coordinator', 'coach')
+def review_leave_request(request, pk, request_id):
+    team = get_object_or_404(Team, pk=pk)
+    lr = get_object_or_404(TeamLeaveRequest, pk=request_id, team=team)
+    role = get_role(request.user)
+    if role == 'coach' and request.user not in team.coaches.all():
+        messages.error(request, "You don't have permission to review leave requests for this team.")
+        return redirect('team_detail', pk=pk)
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'accept':
+            team.players.remove(lr.player)
+            lr.status = 'accepted'
+            lr.reviewed_at = timezone.now()
+            lr.reviewed_by = request.user
+            lr.save()
+            send_notification(lr.player, 'Leave Request Accepted', f'Your request to leave {team.name} was accepted.', 'general')
+            messages.success(request, f'{lr.player.username} removed from the team.')
+        elif action == 'reject':
+            lr.status = 'rejected'
+            lr.reviewed_at = timezone.now()
+            lr.reviewed_by = request.user
+            lr.save()
+            send_notification(lr.player, 'Leave Request Rejected', f'Your request to leave {team.name} was rejected.', 'general')
+            messages.success(request, f'{lr.player.username} leave request rejected.')
+    return redirect('team_leave_requests', pk=pk)
+
+
+@login_required
+@require_role('coordinator', 'coach')
+def team_join_requests(request, pk):
+    team = get_object_or_404(Team, pk=pk)
+    # only coaches or coordinator for that team can view
+    role = get_role(request.user)
+    if role == 'coach' and request.user not in team.coaches.all():
+        messages.error(request, "You don't have permission to view requests for this team.")
+        return redirect('team_detail', pk=pk)
+    pending = team.join_requests.filter(status='pending').order_by('created_at')
+    return render(request, 'teams/requests.html', {'team': team, 'pending': pending})
+
+
+@login_required
+@require_role('coordinator', 'coach')
+def review_join_request(request, pk, request_id):
+    team = get_object_or_404(Team, pk=pk)
+    jr = get_object_or_404(TeamJoinRequest, pk=request_id, team=team)
+    role = get_role(request.user)
+    if role == 'coach' and request.user not in team.coaches.all():
+        messages.error(request, "You don't have permission to review requests for this team.")
+        return redirect('team_detail', pk=pk)
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'accept':
+            team.players.add(jr.player)
+            jr.status = 'accepted'
+            jr.reviewed_at = timezone.now()
+            jr.reviewed_by = request.user
+            jr.save()
+            send_notification(jr.player, 'Join Request Accepted', f'Your request to join {team.name} was accepted.', 'general')
+            messages.success(request, f'{jr.player.username} added to the team.')
+        elif action == 'reject':
+            jr.status = 'rejected'
+            jr.reviewed_at = timezone.now()
+            jr.reviewed_by = request.user
+            jr.save()
+            send_notification(jr.player, 'Join Request Rejected', f'Your request to join {team.name} was rejected.', 'general')
+            messages.success(request, f'{jr.player.username} request rejected.')
+    return redirect('team_join_requests', pk=pk)
 
 
 @login_required

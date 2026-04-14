@@ -12,10 +12,10 @@
     <a href="{% url 'team_edit' team.pk %}" class="btn btn-secondary">✏️ Edit</a>
     <a href="{% url 'team_delete' team.pk %}" class="btn btn-danger">🗑️ Delete</a>
     {% endif %}
-    {% if role == 'player' and request.user not in team.players.all %}
-    <form method="post" action="{% url 'join_team' team.pk %}">{% csrf_token %}<button class="btn btn-primary">+ Join Team</button></form>
-    {% elif role == 'player' and request.user in team.players.all %}
-    <form method="post" action="{% url 'leave_team' team.pk %}">{% csrf_token %}<button class="btn btn-danger">Leave Team</button></form>
+  {% if role == 'player' and request.user not in team.players.all %}
+  <form method="post" action="{% url 'request_join_team' team.pk %}">{% csrf_token %}<button class="btn btn-primary">+ Request to Join</button></form>
+  {% elif role == 'player' and request.user in team.players.all %}
+  <form method="post" action="{% url 'request_leave_team' team.pk %}">{% csrf_token %}<button class="btn btn-danger">Request to Leave</button></form>
     {% endif %}
   </div>
 </div>
@@ -25,9 +25,13 @@
   <div class="card">
     <div class="card-header">
       <div class="card-title">🎓 Coaching Staff</div>
-      {% if role == 'coordinator' and all_coaches %}
+    {% if role == 'coordinator' and all_coaches %}
       <button onclick="document.getElementById('assign-coach-form').style.display=document.getElementById('assign-coach-form').style.display==='none'?'block':'none'" class="btn btn-secondary btn-sm">+ Assign Coach</button>
-      {% endif %}
+    {% endif %}
+  {% if role in 'coach coordinator' %}
+  <a href="{% url 'team_join_requests' team.pk %}" class="btn btn-secondary btn-sm">Pending Join Requests</a>
+  <a href="{% url 'team_leave_requests' team.pk %}" class="btn btn-secondary btn-sm">Pending Leave Requests</a>
+  {% endif %}
     </div>
     {% if role == 'coordinator' %}
     <div id="assign-coach-form" style="display:none;margin-bottom:1rem">
