@@ -1015,12 +1015,41 @@ def fee_create(request):
             amount=request.POST.get('amount'),
             late_fee_amount=request.POST.get('late_fee_amount', 0),
             deadline=request.POST.get('deadline'),
-            team=Team.objects.filter(pk=request.POST.get('team')).first(),
+            # request.POST.get('team') may be an empty string if no team selected; handle safely
+            team=(Team.objects.filter(pk=request.POST.get('team')).first() if request.POST.get('team') else None),
             created_by=request.user,
         )
         messages.success(request, f'Fee "{fee.name}" created.')
         return redirect('fee_detail', pk=fee.pk)
     return render(request, 'fees/form.html', {'teams': teams})
+
+
+@login_required
+@require_role('coordinator')
+def fee_edit(request, pk):
+    fee = get_object_or_404(Fee, pk=pk)
+    teams = Team.objects.all()
+    if request.method == 'POST':
+        fee.name = request.POST.get('name')
+        fee.amount = request.POST.get('amount')
+        fee.late_fee_amount = request.POST.get('late_fee_amount', 0)
+        fee.deadline = request.POST.get('deadline')
+        fee.team = Team.objects.filter(pk=request.POST.get('team')).first() if request.POST.get('team') else None
+        fee.save()
+        messages.success(request, f'Fee "{fee.name}" updated.')
+        return redirect('fee_detail', pk=fee.pk)
+    return render(request, 'fees/form.html', {'teams': teams, 'fee': fee})
+
+
+@login_required
+@require_role('coordinator')
+def fee_delete(request, pk):
+    fee = get_object_or_404(Fee, pk=pk)
+    if request.method == 'POST':
+        fee.delete()
+        messages.success(request, 'Fee deleted.')
+        return redirect('fees_list')
+    return render(request, 'fees/confirm_delete.html', {'fee': fee})
 
 
 @login_required

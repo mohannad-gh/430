@@ -7,7 +7,9 @@
     <div class="page-title">{{ fee.name }}</div>
   </div>
   <div class="topbar-actions">
-    <a href="{% url 'financial_summary' %}" class="btn btn-secondary">📊 Summary</a>
+  <a href="{% url 'financial_summary' %}" class="btn btn-secondary">📊 Summary</a>
+  <a href="{% url 'fee_edit' fee.pk %}" class="btn btn-secondary">✏️ Edit</a>
+  <a href="{% url 'fee_delete' fee.pk %}" class="btn btn-danger">🗑️ Delete</a>
   </div>
 </div>
 

@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block title %}Delete Fee — VolleyLB{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div><a href="{% url 'fee_detail' fee.pk %}" class="text-muted" style="font-size:0.85rem">← Back</a>
+  <div class="page-title">Delete <span>Fee</span></div></div>
+</div>
+<div class="card" style="max-width:560px">
+  <form method="post">
+    {% csrf_token %}
+    <p>Are you sure you want to delete the fee <strong>{{ fee.name }}</strong>? This will remove all associated player fee records.</p>
+    <div style="display:flex;gap:0.75rem">
+      <button type="submit" class="btn btn-danger">Delete Fee</button>
+      <a href="{% url 'fee_detail' fee.pk %}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
