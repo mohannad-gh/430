@@ -1125,11 +1125,19 @@ def financial_summary(request):
     total_pending = PlayerFee.objects.filter(status='pending').aggregate(s=Sum('amount_due'))['s'] or 0
     total_overdue = PlayerFee.objects.filter(status='overdue').aggregate(s=Sum('amount_due'))['s'] or 0
     fees = Fee.objects.all().order_by('-created_at')
+    # include payouts summary
+    paid_payouts = CoachEarning.objects.filter(paid=True).aggregate(s=Sum('amount'))['s'] or 0
+    pending_payouts = CoachEarning.objects.filter(paid=False).aggregate(s=Sum('amount'))['s'] or 0
+    payouts = CoachEarning.objects.select_related('coach', 'session', 'session__team').order_by('-session__date')
+
     return render(request, 'fees/summary.html', {
         'total_collected': total_collected,
         'total_pending': total_pending,
         'total_overdue': total_overdue,
         'fees': fees,
+        'paid_payouts': paid_payouts,
+        'pending_payouts': pending_payouts,
+        'payouts': payouts,
     })
 
 

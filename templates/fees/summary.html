@@ -23,6 +23,42 @@
   </div>
 </div>
 
+{% if request.user.profile.role == 'coordinator' %}
+<div class="stats-grid" style="grid-template-columns:repeat(2,1fr);margin-bottom:2rem">
+  <div class="stat-card" style="border-top-color:var(--success)">
+    <div class="stat-value" style="color:var(--success)">${{ paid_payouts }}</div>
+    <div class="stat-label">Total Payouts Paid</div>
+  </div>
+  <div class="stat-card" style="border-top-color:var(--warning)">
+    <div class="stat-value" style="color:var(--warning)">${{ pending_payouts }}</div>
+    <div class="stat-label">Payouts Pending</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><div class="card-title">💳 Payouts</div></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Coach</th><th>Session</th><th>Date</th><th>Team</th><th>Amount</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for p in payouts %}
+        <tr>
+          <td>{{ p.coach.username }}</td>
+          <td><a href="{% url 'session_detail' p.session.pk %}" style="color:var(--orange)">{{ p.session.title }}</a></td>
+          <td>{{ p.session.date|date:"M d, Y" }}</td>
+          <td>{{ p.session.team.name }}</td>
+          <td>${{ p.amount }}</td>
+          <td>{% if p.paid %}✅ Paid{% else %}⏳ Pending{% endif %}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="empty-state">No payouts yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
 <div class="card">
   <div class="card-header"><div class="card-title">📋 All Fees Breakdown</div></div>
   <div class="table-wrap">
