@@ -68,6 +68,10 @@ urlpatterns = [
 
     # Coach Earnings
     path('earnings/', views.earnings_list, name='earnings_list'),
+    path('payouts/', views.payouts, name='payouts'),
+    path('payouts/<int:pk>/edit/', views.payout_edit, name='payout_edit'),
+    path('payouts/<int:pk>/delete/', views.payout_delete, name='payout_delete'),
+    path('payouts/record/<int:session_id>/<int:coach_id>/', views.payout_record, name='payout_record'),
 
     # Users
     path('users/', views.users_list, name='users_list'),

@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% block title %}Payouts — VolleyLB{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div class="page-title">Payouts <span>Management</span></div>
+</div>
+
+<form method="post">
+  {% csrf_token %}
+  <div class="card">
+    <div class="card-header"><div class="card-title">All Expected and Recorded Payouts</div></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th></th><th>Coach</th><th>Session</th><th>Date</th><th>Team</th><th>Amount</th><th>Status</th><th>Paid At</th></tr>
+        </thead>
+        <tbody>
+          {% for e in entries %}
+          <tr>
+            <td>
+              {% if e.type == 'existing' %}
+                <input type="checkbox" name="entry" value="existing:{{ e.earning.pk }}" />
+              {% else %}
+                <input type="checkbox" name="entry" value="expected:{{ e.session.pk }}:{{ e.coach.pk }}" />
+              {% endif %}
+            </td>
+            <td>{{ e.coach.username }}</td>
+            <td><a href="{% url 'session_detail' e.session.pk %}">{{ e.session.title }}</a></td>
+            <td>{{ e.session.date|date:"M d, Y" }}</td>
+            <td>{{ e.session.team.name }}</td>
+            <td>${{ e.amount }}</td>
+            <td>{% if e.type == 'existing' and e.paid %}✅ Paid{% elif e.type == 'existing' %}Recorded - Pending{% else %}Expected{% endif %}</td>
+            <td>{% if e.type == 'existing' and e.earning.paid_at %}{{ e.earning.paid_at|date:"M d, Y" }}{% else %}&mdash;{% endif %}</td>
+            <td>
+              {% if e.type == 'existing' %}
+                <a href="{% url 'payout_edit' e.earning.pk %}">Edit</a> · <a href="{% url 'payout_delete' e.earning.pk %}">Delete</a>
+              {% else %}
+                <a href="{% url 'payout_record' e.session.pk e.coach.pk %}">Record</a>
+              {% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="8" class="empty-state">No payout entries.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div style="padding:1rem;border-top:1px solid var(--muted);display:flex;gap:1rem;align-items:center;">
+      <button class="btn btn-primary" type="submit">Process selected payouts</button>
+      <a href="{% url 'financial_summary' %}" class="btn btn-secondary">Back</a>
+    </div>
+  </div>
+</form>
+
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block title %}Edit Payout — VolleyLB{% endblock %}
+{% block content %}
+<div class="topbar"><div class="page-title">Edit <span>Payout</span></div></div>
+
+<div class="card">
+  <form method="post">
+    {% csrf_token %}
+    <div style="padding:1rem">
+      <div style="margin-bottom:1rem">
+        <label>Coach</label>
+        <div>{{ earning.coach.username }}</div>
+      </div>
+      <div style="margin-bottom:1rem">
+        <label>Session</label>
+        <div><a href="{% url 'session_detail' earning.session.pk %}">{{ earning.session.title }}</a></div>
+      </div>
+      <div style="margin-bottom:1rem">
+        <label>Amount</label>
+        <input type="text" name="amount" value="{{ earning.amount }}" />
+      </div>
+      <div style="margin-bottom:1rem">
+        <label><input type="checkbox" name="paid" {% if earning.paid %}checked{% endif %} /> Paid</label>
+      </div>
+      <div style="display:flex;gap:1rem">
+        <button class="btn btn-primary" type="submit">Save</button>
+        <a class="btn btn-secondary" href="{% url 'payouts' %}">Cancel</a>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}

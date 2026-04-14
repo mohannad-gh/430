@@ -1148,6 +1148,162 @@ def earnings_list(request):
     })
 
 
+@login_required
+@require_role('coordinator')
+def payouts(request):
+    """Coordinator payout management.
+
+    Shows history of expected/paid/pending payouts. Training = $75 per coach per session.
+    Match = $100 per coach for both teams (if opponent matches a Team name).
+    """
+    # helper to compute amount
+    def payout_amount(session):
+        return Decimal('100.00') if session.session_type == 'match' else Decimal('75.00')
+
+    # collect existing earnings
+    existing = list(CoachEarning.objects.select_related('session', 'coach').all())
+
+    # map existing by (coach_id, session_id)
+    existing_map = {(e.coach_id, e.session_id): e for e in existing}
+
+    # consider sessions up to today (history) and recent future (include future if desired)
+    sessions = Session.objects.order_by('-date')
+
+    entries = []
+    for s in sessions:
+        # primary team coaches
+        coaches = list(s.team.coaches.all())
+        # if match and opponent corresponds to a Team name, include that team's coaches
+        if s.session_type == 'match' and s.opponent:
+            opp = Team.objects.filter(name__iexact=s.opponent).first()
+            if opp:
+                coaches += list(opp.coaches.all())
+
+        # dedupe coaches
+        seen = set()
+        for coach in coaches:
+            if coach.id in seen:
+                continue
+            seen.add(coach.id)
+            key = (coach.id, s.id)
+            if key in existing_map:
+                e = existing_map[key]
+                entries.append({
+                    'type': 'existing', 'earning': e, 'session': s, 'coach': coach,
+                    'amount': e.amount, 'paid': e.paid
+                })
+            else:
+                amt = payout_amount(s)
+                entries.append({
+                    'type': 'expected', 'session': s, 'coach': coach,
+                    'amount': amt, 'paid': False
+                })
+
+    # sort entries by session date desc
+    entries.sort(key=lambda x: x['session'].date if x.get('session') else date.min, reverse=True)
+
+    if request.method == 'POST':
+        selected = request.POST.getlist('entry')
+        now = timezone.now()
+        processed = 0
+        for val in selected:
+            # val formats: existing:<earning_pk> OR expected:<session_id>:<coach_id>
+            parts = val.split(':')
+            if parts[0] == 'existing' and len(parts) == 2:
+                try:
+                    ce = CoachEarning.objects.get(pk=int(parts[1]))
+                except Exception:
+                    continue
+                if not ce.paid:
+                    ce.paid = True
+                    ce.paid_at = now
+                    ce.save()
+                    send_notification(ce.coach, 'Payout Processed', f'Your earning for "{ce.session.title}" was paid by the coordinator.', 'payment')
+                    processed += 1
+            elif parts[0] == 'expected' and len(parts) == 3:
+                try:
+                    sid = int(parts[1]); cid = int(parts[2])
+                except Exception:
+                    continue
+                # check again that no earning exists
+                if CoachEarning.objects.filter(coach_id=cid, session_id=sid).exists():
+                    continue
+                sess = Session.objects.filter(pk=sid).first()
+                coach = User.objects.filter(pk=cid).first()
+                if not sess or not coach:
+                    continue
+                amt = payout_amount(sess)
+                ce = CoachEarning.objects.create(coach=coach, session=sess, amount=amt, paid=True, paid_at=now)
+                send_notification(coach, 'Payout Processed', f'Your earning for "{sess.title}" was paid by the coordinator.', 'payment')
+                processed += 1
+
+        messages.success(request, f'{processed} payouts processed.')
+        return redirect('payouts')
+
+    return render(request, 'earnings/payouts.html', {'entries': entries})
+
+
+@login_required
+@require_role('coordinator')
+def payout_edit(request, pk):
+    ce = get_object_or_404(CoachEarning, pk=pk)
+    if request.method == 'POST':
+        amount = request.POST.get('amount')
+        paid = request.POST.get('paid') == 'on'
+        try:
+            ce.amount = Decimal(amount)
+        except Exception:
+            messages.error(request, 'Invalid amount.')
+            return render(request, 'earnings/edit_payout.html', {'earning': ce})
+
+        if paid and not ce.paid:
+            ce.paid = True
+            ce.paid_at = timezone.now()
+        elif not paid and ce.paid:
+            ce.paid = False
+            ce.paid_at = None
+
+        ce.save()
+        send_notification(ce.coach, 'Payout Updated', f'Your payout for "{ce.session.title}" was updated by the coordinator.', 'payment')
+        messages.success(request, 'Payout updated.')
+        return redirect('payouts')
+
+    return render(request, 'earnings/edit_payout.html', {'earning': ce})
+
+
+@login_required
+@require_role('coordinator')
+def payout_delete(request, pk):
+    ce = get_object_or_404(CoachEarning, pk=pk)
+    if request.method == 'POST':
+        ce.delete()
+        messages.success(request, 'Payout removed.')
+        return redirect('payouts')
+    return render(request, 'earnings/confirm_delete_payout.html', {'earning': ce})
+
+
+@login_required
+@require_role('coordinator')
+def payout_record(request, session_id, coach_id):
+    """Create a recorded (unpaid) CoachEarning for an expected entry."""
+    sess = get_object_or_404(Session, pk=session_id)
+    coach = get_object_or_404(User, pk=coach_id)
+
+    # compute default amount
+    amt = Decimal('100.00') if sess.session_type == 'match' else Decimal('75.00')
+
+    # avoid duplicate
+    ce, created = CoachEarning.objects.get_or_create(
+        coach=coach, session=sess,
+        defaults={'amount': amt, 'paid': False}
+    )
+    if created:
+        messages.success(request, 'Payout recorded.')
+    else:
+        messages.info(request, 'Payout already exists.')
+    return redirect('payouts')
+
+
 # ─── users ────────────────────────────────────────────────────────────────────
 
 @login_required

@@ -67,6 +67,9 @@
       <a href="{% url 'financial_summary' %}" class="nav-item {% if request.resolver_match.url_name == 'financial_summary' %}active{% endif %}">
         <span class="icon">📊</span> Financial Summary
       </a>
+      <a href="{% url 'payouts' %}" class="nav-item {% if request.resolver_match.url_name == 'payouts' %}active{% endif %}">
+        <span class="icon">💸</span> Payouts
+      </a>
       {% endif %}
       {% if request.user.profile.role == 'coach' %}
       <a href="{% url 'earnings_list' %}" class="nav-item {% if request.resolver_match.url_name == 'earnings_list' %}active{% endif %}">

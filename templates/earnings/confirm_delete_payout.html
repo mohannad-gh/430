@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}Delete Payout — VolleyLB{% endblock %}
+{% block content %}
+<div class="topbar"><div class="page-title">Delete <span>Payout</span></div></div>
+
+<div class="card">
+  <div style="padding:1rem">
+    <p>Are you sure you want to delete the payout for <strong>{{ earning.coach.username }}</strong> — "{{ earning.session.title }}"?</p>
+    <form method="post">
+      {% csrf_token %}
+      <button class="btn btn-danger" type="submit">Delete</button>
+      <a class="btn btn-secondary" href="{% url 'payouts' %}">Cancel</a>
+    </form>
+  </div>
+</div>
+{% endblock %}
