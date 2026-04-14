@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% block title %}{{ team.name }} — Availability{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div><a href="{% url 'team_detail' team.pk %}" class="text-muted" style="font-size:0.85rem">← Back to Team</a></div>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:0.5rem">{{ team.name }} — Availability</h3>
+  <div class="text-muted" style="margin-bottom:1rem">Aggregated weekly availability for team players</div>
+
+  <div class="avail-grid">
+    <div class="avail-header"></div>
+    <div class="avail-header">🌅 Morning</div>
+    <div class="avail-header">☀️ Afternoon</div>
+    <div class="avail-header">🌙 Evening</div>
+    {% for day_row in avail_grid %}
+    <div class="avail-day">{{ day_row.day|title }}</div>
+    {% for slot_list in day_row.slot_lists %}
+    <div class="avail-cell" style="min-height:3.5rem">
+      <div style="font-weight:600">{{ slot_list|length }} available</div>
+      <div style="font-size:0.85rem;color:var(--text-muted);margin-top:0.25rem">
+        {% for u in slot_list %}
+          <span style="display:inline-block;margin-right:0.4rem">{{ u }}</span>
+        {% empty %}
+          <span class="text-muted">—</span>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

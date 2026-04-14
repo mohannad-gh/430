@@ -465,6 +465,33 @@ def availability(request):
     })
 
 
+@login_required
+@require_role('coach', 'coordinator')
+def team_availability(request, pk):
+    team = get_object_or_404(Team, pk=pk)
+    # only coaches of the team or coordinators can view
+    if get_role(request.user) == 'coach' and team not in request.user.coached_teams.all():
+        messages.error(request, "You don't have permission to view this team's availability.")
+        return redirect('teams_list')
+
+    days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    slots = ['morning', 'afternoon', 'evening']
+
+    # Build a list of days each containing a list for each slot (morning/afternoon/evening)
+    players = team.players.all()
+    avail_grid = []
+    for day in days:
+        slot_lists = []
+        for slot in slots:
+            avails = Availability.objects.filter(day=day, slot=slot, player__in=players).select_related('player')
+            slot_lists.append([a.player.username for a in avails])
+        avail_grid.append({'day': day, 'slot_lists': slot_lists})
+
+    return render(request, 'teams/availability.html', {
+        'team': team, 'slots': slots, 'avail_grid': avail_grid
+    })
+
+
 # ─── sessions ─────────────────────────────────────────────────────────────────
 
 @login_required
@@ -626,9 +653,9 @@ def ai_schedule(request):
         team_id = request.POST.get('team')
         date_from = request.POST.get('date_from')
         date_to = request.POST.get('date_to')
-        prefer_weekdays = request.POST.get('prefer_weekdays') == 'on'
-        prefer_evenings = request.POST.get('prefer_evenings') == 'on'
-        prefer_weekends = request.POST.get('prefer_weekends') == 'on'
+        prefer_morning = request.POST.get('prefer_morning') == 'on'
+        prefer_afternoon = request.POST.get('prefer_afternoon') == 'on'
+        prefer_evening = request.POST.get('prefer_evening') == 'on'
         avoid_bad_weather = request.POST.get('avoid_bad_weather') == 'on'
         selected_court_ids = request.POST.getlist('courts')
 
@@ -674,11 +701,19 @@ def ai_schedule(request):
         court_list = '\n'.join([f"- {c.name} ({'Indoor' if c.court_type == 'indoor' else 'Outdoor'})" for c in selected_courts])
         avail_text = '\n'.join([f"- {k}: {v} players available" for k, v in sorted(avail_summary.items(), key=lambda x: -x[1])[:10]])
 
+        # Include booked sessions summary for the date range so the LLM can avoid conflicts
+        booked_lines = []
+        try:
+            for s in Session.objects.filter(date__gte=date_from, date__lte=date_to, status='scheduled').select_related('court'):
+                booked_lines.append(f"- {s.date}: {s.start_time.strftime('%H:%M')}-{s.end_time.strftime('%H:%M')} on {s.court.name if s.court else 'TBD'}")
+        except Exception:
+            booked_lines = []
+
         prompt = f"""You are a volleyball scheduling assistant for VolleyLB, a Lebanese volleyball club.
 
 Team: {team.name} ({players.count()} players)
 Date Range: {date_from} to {date_to}
-Preferences: {'Weekdays' if prefer_weekdays else ''} {'Evenings' if prefer_evenings else ''} {'Weekends' if prefer_weekends else ''}
+Preferences: {'Morning' if prefer_morning else ''} {'Afternoon' if prefer_afternoon else ''} {'Evening' if prefer_evening else ''}
 Avoid bad weather: {avoid_bad_weather}
 
 Available Courts:
@@ -689,6 +724,9 @@ Player Availability Summary (day_slot: number of players available):
 
 Weather Forecast for date range:
 {weather_info}
+
+Booked Sessions in date range:
+{('\n'.join(booked_lines) if booked_lines else 'None')}
 
 Analyze the above and recommend ONE optimal training session. Consider:
 1. Maximum player attendance based on availability
@@ -706,23 +744,121 @@ Respond in this EXACT JSON format:
   "analysis_points": ["point 1", "point 2", "point 3"]
 }}"""
 
-        try:
-            api_key = os.environ.get('ANTHROPIC_API_KEY', '')
-            client = anthropic.Anthropic(api_key=api_key)
-            response = client.messages.create(
-                model='claude-sonnet-4-20250514',
-                max_tokens=1000,
-                messages=[{'role': 'user', 'content': prompt}]
-            )
-            text = response.content[0].text.strip()
-            # extract JSON
-            if '```' in text:
-                text = text.split('```')[1]
-                if text.startswith('json'):
-                    text = text[4:]
-            recommendation = json.loads(text)
-        except Exception as e:
-            messages.error(request, f'AI scheduling failed: {str(e)}')
+        # Prefer using Anthropic if an API key is present, otherwise or on failure
+        # fall back to a deterministic local scheduler to avoid dependence on paid LLMs.
+        api_key = os.environ.get('ANTHROPIC_API_KEY', '')
+        use_local = os.environ.get('USE_LOCAL_SCHEDULER', '') == '1' or not api_key
+
+        if not use_local:
+            try:
+                client = anthropic.Anthropic(api_key=api_key)
+                response = client.messages.create(
+                    model='claude-sonnet-4-20250514',
+                    max_tokens=1000,
+                    messages=[{'role': 'user', 'content': prompt}]
+                )
+                text = response.content[0].text.strip()
+                # extract JSON
+                if '```' in text:
+                    text = text.split('```')[1]
+                    if text.startswith('json'):
+                        text = text[4:]
+                recommendation = json.loads(text)
+            except Exception as e:
+                # on any failure, log message and fall back to local planner
+                messages.warning(request, f'AI scheduling (Anthropic) failed; using local scheduler.')
+                use_local = True
+
+        if use_local:
+            # Build a simple deterministic scheduler:
+            # - For each date in range and each slot (morning/afternoon/evening), count available players
+            # - Exclude outdoor courts on rainy days if avoid_bad_weather is set
+            # - Pick the date/slot/court with highest availability, prefer indoor courts when tied
+            slot_times = {'morning': ('09:00', '11:00'), 'afternoon': ('15:00', '17:00'), 'evening': ('19:00', '21:00')}
+            rainy_dates = set()
+            try:
+                daily = weather_data.get('daily', {}) if 'weather_data' in locals() else {}
+                times = daily.get('time', [])
+                prec = daily.get('precipitation_sum', [])
+                for i, d in enumerate(times):
+                    r = 0
+                    try:
+                        r = float(prec[i])
+                    except Exception:
+                        r = 0
+                    if r > 2:
+                        rainy_dates.add(d)
+            except Exception:
+                rainy_dates = set()
+
+            def date_range(start_s, end_s):
+                try:
+                    s = datetime.strptime(start_s, '%Y-%m-%d').date()
+                    e = datetime.strptime(end_s, '%Y-%m-%d').date()
+                except Exception:
+                    return []
+                days = []
+                cur = s
+                while cur <= e:
+                    days.append(cur)
+                    cur += timedelta(days=1)
+                return days
+
+            considered_courts = list(selected_courts) if selected_courts.exists() else list(Court.objects.filter(is_active=True))
+            team_size = team.players.count()
+
+            best = None
+            for d in date_range(date_from, date_to):
+                d_str = d.isoformat()
+                weekday = d.strftime('%A').lower()
+                for slot in ['morning', 'afternoon', 'evening']:
+                    avail_count = avail_summary.get(f"{weekday}_{slot}", 0)
+                    # soft preference bonus if coach selected this slot
+                    pref_bonus = 0
+                    if (slot == 'morning' and prefer_morning) or (slot == 'afternoon' and prefer_afternoon) or (slot == 'evening' and prefer_evening):
+                        pref_bonus = 0.2
+                    for court in considered_courts:
+                        if avoid_bad_weather and court.court_type == 'outdoor' and d_str in rainy_dates:
+                            continue
+                        # check for session conflicts on this court for the candidate slot
+                        s_start, s_end = slot_times.get(slot, ('19:00', '21:00'))
+                        conflict_exists = Session.objects.filter(
+                            date=d,
+                            status='scheduled',
+                            court=court
+                        ).filter(start_time__lt=s_end, end_time__gt=s_start).exists()
+                        if conflict_exists:
+                            continue
+                        score = avail_count
+                        score += pref_bonus
+                        # small preference for indoor courts and sufficient capacity
+                        if court.court_type == 'indoor':
+                            score += 0.1
+                        if court.capacity >= team_size:
+                            score += 0.05
+                        if best is None or score > best['score']:
+                            best = {
+                                'score': score,
+                                'date': d_str,
+                                'slot': slot,
+                                'court': court,
+                            }
+
+            if best:
+                start_time, end_time = slot_times.get(best['slot'], ('19:00', '21:00'))
+                recommendation = {
+                    'date': best['date'],
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'court': best['court'].name,
+                    'reason': f"Selected for highest player availability ({int(best['score'])} players) and court suitability.",
+                    'analysis_points': [
+                        f"{int(best['score'])} players available for {best['slot']}",
+                        f"Court '{best['court'].name}' selected ({best['court'].court_type})"
+                    ]
+                }
+            else:
+                recommendation = None
 
     return render(request, 'sessions/ai_schedule.html', {
         'teams': coached_teams, 'courts': courts, 'recommendation': recommendation

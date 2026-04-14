@@ -39,7 +39,7 @@
       {% endif %}
       {% if request.user.profile.role == 'coach' %}
       <a href="{% url 'ai_schedule' %}" class="nav-item {% if request.resolver_match.url_name == 'ai_schedule' %}active{% endif %}">
-        <span class="icon">🧠</span> AI Scheduling
+        <span class="icon">🧠</span> Scheduling Assistant
       </a>
       {% endif %}
       {% else %}

@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}AI Smart Scheduling — VolleyLB{% endblock %}
+{% block title %}Scheduling Assistant — VolleyLB{% endblock %}
 {% block content %}
 <div class="topbar">
   <div><a href="{% url 'sessions_list' %}" class="text-muted" style="font-size:0.85rem">← Back to Schedule</a></div>
@@ -8,7 +8,7 @@
 <div class="ai-header">
   <div class="ai-icon">🧠</div>
   <div>
-    <div class="ai-title">AI Smart Scheduling</div>
+  <div class="ai-title">Scheduling Assistant</div>
     <div class="ai-sub">Optimized by court availability, player availability & weather</div>
   </div>
 </div>
@@ -33,17 +33,17 @@
         </div>
       </div>
 
-      <div style="background:var(--bg-card2);border-radius:12px;padding:1rem;margin-bottom:1.25rem;border:1px solid rgba(255,107,0,0.2)">
-        <label style="color:var(--orange)">Team Availability Preference</label>
+        <div style="background:var(--bg-card2);border-radius:12px;padding:1rem;margin-bottom:1.25rem;border:1px solid rgba(255,107,0,0.2)">
+        <label style="color:var(--orange)">Preferred Time Slots</label>
         <div style="display:flex;gap:1rem;margin-top:0.75rem;flex-wrap:wrap">
-          <label class="checkbox-label"><input type="checkbox" name="prefer_weekdays" checked> Weekdays</label>
-          <label class="checkbox-label"><input type="checkbox" name="prefer_evenings" checked> Evenings</label>
-          <label class="checkbox-label"><input type="checkbox" name="prefer_weekends"> Weekends</label>
+          <label class="checkbox-label"><input type="checkbox" name="prefer_morning" checked> Morning</label>
+          <label class="checkbox-label"><input type="checkbox" name="prefer_afternoon" checked> Afternoon</label>
+          <label class="checkbox-label"><input type="checkbox" name="prefer_evening"> Evening</label>
         </div>
       </div>
 
       <div style="background:var(--bg-card2);border-radius:12px;padding:1rem;margin-bottom:1.25rem;border:1px solid rgba(255,107,0,0.2)">
-        <label style="color:var(--orange)">Available Courts</label>
+        <label style="color:var(--orange)">Preferred Courts</label>
         <div style="margin-top:0.75rem;display:flex;flex-direction:column;gap:0.5rem">
           {% for court in courts %}
           <label class="checkbox-label">
@@ -64,7 +64,7 @@
       </div>
 
       <button type="submit" class="btn btn-primary w-full" style="justify-content:center;padding:0.85rem;font-size:1rem" onclick="document.getElementById('loading').style.display='flex'">
-        🧠 Generate Smart Schedule
+        🧠 Generate Recommendation
       </button>
     </form>
   </div>
@@ -114,8 +114,8 @@
     {% else %}
     <div class="card" style="border:2px dashed var(--border);text-align:center;padding:3rem">
       <div style="font-size:3rem;margin-bottom:1rem">🧠</div>
-      <div style="font-family:'Bebas Neue',cursive;font-size:1.2rem;letter-spacing:2px;color:var(--text-muted)">AI Recommendation</div>
-      <div class="text-muted mt-1" style="font-size:0.85rem">Fill in the form and generate a smart schedule to see recommendations here.</div>
+  <div style="font-family:'Bebas Neue',cursive;font-size:1.2rem;letter-spacing:2px;color:var(--text-muted)">Recommendation</div>
+  <div class="text-muted mt-1" style="font-size:0.85rem">Fill in the form and generate a recommendation to see suggestions here.</div>
     </div>
     {% endif %}
   </div>

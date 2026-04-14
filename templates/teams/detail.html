@@ -63,7 +63,10 @@
   <!-- Players -->
   <div class="card">
     <div class="card-header">
-      <div class="card-title">🏐 Players ({{ team.players.count }})</div>
+    <div class="card-title">🏐 Players ({{ team.players.count }})</div>
+    {% if role == 'coach' or role == 'coordinator' %}
+    <a href="{% url 'team_availability' team.pk %}" class="btn btn-secondary btn-sm">View Availability</a>
+    {% endif %}
     </div>
     {% for player in team.players.all %}
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;padding:0.75rem;background:var(--bg-card2);border-radius:10px">
