@@ -105,7 +105,21 @@
 
   <!-- Main -->
   <main class="main-content">
-  {# Flash messages removed — chat UI will surface communication feedback instead #}
+    {% comment %}Show flash messages on all pages except the chat conversation list/detail to avoid duplicate messages with the chat UI{% endcomment %}
+    {% with name=request.resolver_match.url_name %}
+      {# hide messages on chat pages (chat manages its own UI) and on auth entry pages (login/register) #}
+  {% if name != 'conversation_detail' and name != 'conversations_list' and name != 'conversation' and name != 'login' and name != 'register' %}
+        {% if messages %}
+            {# show only the last 3 messages to avoid overwhelming pages like login #}
+            {% for message in messages|slice:"-3:" %}
+              <div class="alert alert-{% if message.tags == 'error' %}error{% else %}{{ message.tags }}{% endif %} compact-alert" style="padding:0.6rem 1rem;border-radius:8px;margin-bottom:0.6rem;font-size:0.95rem;">
+                {% if message.tags == 'success' %}<span style="margin-right:0.5rem">✅</span>{% elif message.tags == 'error' %}<span style="margin-right:0.5rem">❌</span>{% endif %}
+                <span>{{ message }}</span>
+              </div>
+            {% endfor %}
+          {% endif %}
+      {% endif %}
+    {% endwith %}
 
     {% block content %}{% endblock %}
   </main>

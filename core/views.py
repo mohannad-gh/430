@@ -276,6 +276,9 @@ def mute_participant(request, conv_pk, user_pk):
     if conv.is_team and role == 'coach' and request.user not in conv.team.coaches.all():
         return JsonResponse({'ok': False, 'error': 'Permission denied'})
     part = get_object_or_404(ConversationParticipant, conversation=conv, user__pk=user_pk)
+    # prevent coach from muting the coordinator of the team
+    if conv.is_team and conv.team.coordinator and part.user == conv.team.coordinator and role == 'coach':
+        return JsonResponse({'ok': False, 'error': 'Cannot mute the coordinator'})
     # mute for 1 hour by default
     part.muted_until = timezone.now() + timedelta(hours=1)
     part.save()
@@ -489,6 +492,12 @@ def join_team(request, pk):
         # legacy direct join - keep for coordinator override but generally use requests
         team.players.add(request.user)
         messages.success(request, f'You joined {team.name}.')
+        # ensure team conversation contains this participant
+        try:
+            conv, created = Conversation.objects.get_or_create(team=team, is_team=True, defaults={'title': f'{team.name} Team Chat'})
+            ConversationParticipant.objects.get_or_create(conversation=conv, user=request.user)
+        except Exception:
+            pass
     return redirect('team_detail', pk=pk)
 
 
@@ -578,6 +587,12 @@ def review_leave_request(request, pk, request_id):
             lr.save()
             send_notification(lr.player, 'Leave Request Accepted', f'Your request to leave {team.name} was accepted.', 'general')
             messages.success(request, f'{lr.player.username} removed from the team.')
+            # remove from team conversation participants if a team chat exists
+            try:
+                conv = Conversation.objects.get(team=team, is_team=True)
+                ConversationParticipant.objects.filter(conversation=conv, user=lr.player).delete()
+            except Conversation.DoesNotExist:
+                pass
         elif action == 'reject':
             lr.status = 'rejected'
             lr.reviewed_at = timezone.now()
@@ -620,6 +635,12 @@ def review_join_request(request, pk, request_id):
             jr.save()
             send_notification(jr.player, 'Join Request Accepted', f'Your request to join {team.name} was accepted.', 'general')
             messages.success(request, f'{jr.player.username} added to the team.')
+            # add to team conversation participants (create conversation if missing)
+            try:
+                conv, created = Conversation.objects.get_or_create(team=team, is_team=True, defaults={'title': f'{team.name} Team Chat'})
+                ConversationParticipant.objects.get_or_create(conversation=conv, user=jr.player)
+            except Exception:
+                pass
         elif action == 'reject':
             jr.status = 'rejected'
             jr.reviewed_at = timezone.now()
@@ -637,6 +658,12 @@ def leave_team(request, pk):
     if request.method == 'POST':
         team.players.remove(request.user)
         messages.success(request, f'You left {team.name}.')
+        # remove from team conversation participants
+        try:
+            conv = Conversation.objects.get(team=team, is_team=True)
+            ConversationParticipant.objects.filter(conversation=conv, user=request.user).delete()
+        except Conversation.DoesNotExist:
+            pass
     return redirect('teams_list')
 
 
@@ -648,6 +675,12 @@ def remove_player(request, pk, player_id):
     if request.method == 'POST':
         team.players.remove(player)
         messages.success(request, f'{player.username} removed from team.')
+        # remove from team conversation participants
+        try:
+            conv = Conversation.objects.get(team=team, is_team=True)
+            ConversationParticipant.objects.filter(conversation=conv, user=player).delete()
+        except Conversation.DoesNotExist:
+            pass
     return redirect('team_detail', pk=pk)
 
 
