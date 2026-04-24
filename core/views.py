@@ -14,7 +14,8 @@ from django.db.models import Sum, Q
 
 from .models import (
     UserProfile, Team, Court, Availability, Session,
-    Attendance, Announcement, Notification, Fee, PlayerFee, CoachEarning
+    Attendance, Announcement, Notification, Fee, PlayerFee, CoachEarning,
+    Conversation, ConversationParticipant, Message,
 )
 from django.utils import timezone
 from .models import TeamJoinRequest
@@ -181,6 +182,214 @@ def dashboard(request):
         ).order_by('-created_at')[:3]
 
     return render(request, 'dashboard.html', ctx)
+
+
+#  Messaging views 
+
+
+@login_required
+def conversations_list(request):
+    # show conversations the user participates in plus team chats they belong to
+    convs = Conversation.objects.filter(participants__user=request.user).order_by('-created_at')
+    # also ensure team chats for user's teams are available
+    teams = request.user.teams.all()
+    team_convs = Conversation.objects.filter(team__in=teams, is_team=True)
+    for tc in team_convs:
+        if tc not in convs:
+            convs = list(convs) + [tc]
+    return render(request, 'messages/list.html', {'conversations': convs})
+
+
+@login_required
+def conversation_detail(request, pk):
+    conv = get_object_or_404(Conversation, pk=pk)
+    # permission: must be participant or team member if team chat
+    if not conv.is_team:
+        if not conv.participants.filter(user=request.user).exists():
+            messages.error(request, "You don't have access to that conversation.")
+            return redirect('conversations_list')
+    else:
+        if conv.team and request.user not in conv.team.players.all() and request.user not in conv.team.coaches.all() and request.user != conv.team.coordinator:
+            messages.error(request, "You don't have access to that team chat.")
+            return redirect('conversations_list')
+
+    messages_qs = conv.messages.order_by('created_at').select_related('sender')[:500]
+    # mark read for participant
+    try:
+        part = conv.participants.get(user=request.user)
+        part.last_read_at = timezone.now()
+        part.save()
+    except ConversationParticipant.DoesNotExist:
+        # auto-join non-team private convo if invited? keep strict and require existence
+        pass
+
+    return render(request, 'messages/detail.html', {'conversation': conv, 'messages': messages_qs})
+
+
+@login_required
+def send_message(request, pk):
+    conv = get_object_or_404(Conversation, pk=pk)
+    if request.method == 'POST':
+        content = request.POST.get('content', '').strip()
+        if content:
+            # check mute
+            try:
+                part = ConversationParticipant.objects.get(conversation=conv, user=request.user)
+                if part.is_muted():
+                    return JsonResponse({'ok': False, 'error': 'You are muted in this conversation.'})
+            except ConversationParticipant.DoesNotExist:
+                if not conv.is_team:
+                    return JsonResponse({'ok': False, 'error': 'Not a participant.'})
+
+            msg = Message.objects.create(conversation=conv, sender=request.user, content=content)
+            # simple notification to other participants
+            recipients = [p.user for p in conv.participants.exclude(user=request.user)]
+            for r in recipients:
+                send_notification(r, 'New Message', f'New message from {request.user.get_full_name() or request.user.username}', 'general')
+            return JsonResponse({'ok': True, 'message_id': msg.pk, 'content': msg.content, 'created_at': msg.created_at.isoformat()})
+    return JsonResponse({'ok': False, 'error': 'Invalid request'})
+
+
+@login_required
+def delete_message(request, conv_pk, msg_pk):
+    conv = get_object_or_404(Conversation, pk=conv_pk)
+    msg = get_object_or_404(Message, pk=msg_pk, conversation=conv)
+    role = get_role(request.user)
+    # only sender, coach or coordinator can delete
+    can_delete = (msg.sender == request.user) or (role in ['coach', 'coordinator'] and (
+        (conv.is_team and request.user in (conv.team.coaches.all() | User.objects.filter(pk=conv.team.coordinator_id))) or role == 'coordinator'
+    ))
+    if not can_delete:
+        return JsonResponse({'ok': False, 'error': 'Permission denied'})
+    msg.mark_deleted(by_user=request.user)
+    return JsonResponse({'ok': True})
+
+
+@login_required
+def mute_participant(request, conv_pk, user_pk):
+    conv = get_object_or_404(Conversation, pk=conv_pk)
+    role = get_role(request.user)
+    # only coach or coordinator for team chats, or coordinator globally
+    if role not in ['coach', 'coordinator']:
+        return JsonResponse({'ok': False, 'error': 'Permission denied'})
+    # verify coach belongs to team for team chat
+    if conv.is_team and role == 'coach' and request.user not in conv.team.coaches.all():
+        return JsonResponse({'ok': False, 'error': 'Permission denied'})
+    part = get_object_or_404(ConversationParticipant, conversation=conv, user__pk=user_pk)
+    # mute for 1 hour by default
+    part.muted_until = timezone.now() + timedelta(hours=1)
+    part.save()
+    send_notification(part.user, 'You were muted', f'You were muted in {conv}.', 'general')
+    return JsonResponse({'ok': True})
+
+
+@login_required
+def mark_typing(request, conv_pk):
+    conv = get_object_or_404(Conversation, pk=conv_pk)
+    try:
+        part = ConversationParticipant.objects.get(conversation=conv, user=request.user)
+        part.last_typing_at = timezone.now()
+        part.save()
+        return JsonResponse({'ok': True})
+    except ConversationParticipant.DoesNotExist:
+        return JsonResponse({'ok': False, 'error': 'Not a participant'})
+
+
+@login_required
+def mark_read(request, conv_pk):
+    conv = get_object_or_404(Conversation, pk=conv_pk)
+    try:
+        part = ConversationParticipant.objects.get(conversation=conv, user=request.user)
+        part.last_read_at = timezone.now()
+        part.save()
+        return JsonResponse({'ok': True})
+    except ConversationParticipant.DoesNotExist:
+        return JsonResponse({'ok': False, 'error': 'Not a participant'})
+
+
+@login_required
+def participants_status(request, conv_pk):
+    conv = get_object_or_404(Conversation, pk=conv_pk)
+    parts = conv.participants.select_related('user')
+    data = []
+    now = timezone.now()
+    for p in parts:
+        is_typing = False
+        is_online = False
+        if p.last_typing_at:
+            is_typing = (now - p.last_typing_at).total_seconds() < 10
+        if p.last_read_at:
+            is_online = (now - p.last_read_at).total_seconds() < 120
+        data.append({'user_id': p.user.pk, 'username': p.user.get_full_name() or p.user.username, 'is_typing': is_typing, 'is_online': is_online})
+    return JsonResponse({'ok': True, 'participants': data})
+
+
+@login_required
+def add_participant(request, conv_pk):
+    conv = get_object_or_404(Conversation, pk=conv_pk)
+    role = get_role(request.user)
+    if not conv.is_team:
+        return JsonResponse({'ok': False, 'error': 'Can only manage participants for team chats'})
+    if role == 'coach' and request.user not in conv.team.coaches.all():
+        return JsonResponse({'ok': False, 'error': 'Permission denied'})
+    if request.method == 'POST':
+        user_id = request.POST.get('user_id')
+        u = get_object_or_404(User, pk=user_id)
+        ConversationParticipant.objects.get_or_create(conversation=conv, user=u)
+        return JsonResponse({'ok': True})
+    return JsonResponse({'ok': False, 'error': 'Invalid'})
+
+
+@login_required
+def remove_participant(request, conv_pk, user_pk):
+    conv = get_object_or_404(Conversation, pk=conv_pk)
+    role = get_role(request.user)
+    if not conv.is_team:
+        return JsonResponse({'ok': False, 'error': 'Can only manage participants for team chats'})
+    if role == 'coach' and request.user not in conv.team.coaches.all():
+        return JsonResponse({'ok': False, 'error': 'Permission denied'})
+    part = get_object_or_404(ConversationParticipant, conversation=conv, user__pk=user_pk)
+    part.delete()
+    return JsonResponse({'ok': True})
+
+
+@login_required
+def start_private_conversation(request, user_pk):
+    other = get_object_or_404(User, pk=user_pk)
+    # find existing private conversation between the two users
+    convs = Conversation.objects.filter(is_team=False, participants__user=request.user).distinct()
+    for c in convs:
+        if c.participants.filter(user=other).exists():
+            return redirect('conversation_detail', pk=c.pk)
+    # create new
+    conv = Conversation.objects.create(title=f"{request.user.username} & {other.username}")
+    ConversationParticipant.objects.create(conversation=conv, user=request.user)
+    ConversationParticipant.objects.create(conversation=conv, user=other)
+    return redirect('conversation_detail', pk=conv.pk)
+
+
+@login_required
+def start_team_conversation(request, team_pk):
+    team = get_object_or_404(Team, pk=team_pk)
+    # only allow team members (players, coaches, coordinator) to open the team chat
+    if request.user not in team.players.all() and request.user not in team.coaches.all() and request.user != team.coordinator and get_role(request.user) != 'coordinator':
+        messages.error(request, "You don't have access to the team chat.")
+        return redirect('team_detail', pk=team.pk)
+
+    conv, created = Conversation.objects.get_or_create(team=team, is_team=True, defaults={'title': f'{team.name} Team Chat'})
+
+    # ensure participants: coordinator, coaches, players
+    # add coordinator
+    if team.coordinator:
+        ConversationParticipant.objects.get_or_create(conversation=conv, user=team.coordinator)
+    # add coaches
+    for c in team.coaches.all():
+        ConversationParticipant.objects.get_or_create(conversation=conv, user=c)
+    # add existing players
+    for p in team.players.all():
+        ConversationParticipant.objects.get_or_create(conversation=conv, user=p)
+
+    return redirect('conversation_detail', pk=conv.pk)
 
 
 # ─── teams ────────────────────────────────────────────────────────────────────

@@ -76,4 +76,17 @@ urlpatterns = [
     # Users
     path('users/', views.users_list, name='users_list'),
     path('users/<int:pk>/edit/', views.user_edit, name='user_edit'),
+    # Messaging
+    path('messages/', views.conversations_list, name='conversations_list'),
+    path('messages/<int:pk>/', views.conversation_detail, name='conversation_detail'),
+    path('messages/<int:pk>/send/', views.send_message, name='send_message'),
+    path('messages/<int:conv_pk>/delete/<int:msg_pk>/', views.delete_message, name='delete_message'),
+    path('messages/<int:conv_pk>/mute/<int:user_pk>/', views.mute_participant, name='mute_participant'),
+    path('messages/<int:conv_pk>/typing/', views.mark_typing, name='mark_typing'),
+    path('messages/<int:conv_pk>/read/', views.mark_read, name='mark_read'),
+    path('messages/<int:conv_pk>/participants/status/', views.participants_status, name='participants_status'),
+    path('messages/<int:conv_pk>/participants/add/', views.add_participant, name='add_participant'),
+    path('messages/<int:conv_pk>/participants/remove/<int:user_pk>/', views.remove_participant, name='remove_participant'),
+    path('messages/start/<int:user_pk>/', views.start_private_conversation, name='start_private_conversation'),
+    path('messages/start/team/<int:team_pk>/', views.start_team_conversation, name='start_team_conversation'),
 ]

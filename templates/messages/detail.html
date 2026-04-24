@@ -1,0 +1,202 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center">
+  <div class="page-title">{% if conversation.is_team and conversation.team %}Team Chat — {{ conversation.team.name }}{% else %}Conversation{% endif %}</div>
+</div>
+
+<style>
+/* Compact chat styles inserted here so template is self-contained */
+.chat-wrapper{display:flex;gap:1.5rem;margin-top:1rem}
+.chat-main{flex:1;display:flex;flex-direction:column}
+.chat-sidebar{width:300px}
+.chat-messages{flex:1;max-height:66vh;overflow:auto;padding:1rem;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid var(--muted);display:flex;flex-direction:column;justify-content:flex-end;gap:0.9rem}
+.message-row{display:flex;align-items:flex-start;gap:1rem;margin-bottom:0.9rem}
+.message-bubble{background:rgba(255,255,255,0.03);padding:0.8rem 1rem;border-radius:8px;min-width:0;flex:1}
+.message-meta{font-size:0.8rem;color:var(--muted);margin-bottom:0.45rem}
+.message-actions{display:flex;align-items:center;gap:0.5rem}
+.btn-delete{background:#ddd;border-radius:8px;padding:6px 10px;border:none;cursor:pointer}
+.btn-mute{background:#ddd;border-radius:8px;padding:6px 8px;border:none;cursor:pointer}
+.send-row{display:flex;gap:0.5rem;margin-top:0.8rem}
+.send-row input{flex:1;padding:0.7rem;border-radius:8px;border:1px solid var(--muted);background:transparent;color:var(--text-white)}
+.send-row button{padding:0.6rem 0.9rem;border-radius:8px}
+.participants-card{padding:1rem;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid var(--muted)}
+.participant{display:flex;justify-content:space-between;align-items:center;padding:0.45rem 0}
+@media (max-width:900px){.chat-wrapper{flex-direction:column}.chat-sidebar{width:100%}}
+</style>
+
+<div class="chat-wrapper">
+  <div class="chat-main">
+    <div class="chat-messages" id="messages">
+      {% for m in messages %}
+        <div class="message-row" data-msg-id="{{ m.pk }}">
+          <div class="message-bubble">
+            <div class="message-meta">{{ m.sender.get_full_name|default:m.sender.username }} • {{ m.created_at|date:"M d, H:i" }}</div>
+            {% if m.is_deleted %}
+              <div class="text-muted">Message deleted</div>
+            {% else %}
+              <div class="message-content">{{ m.content }}</div>
+            {% endif %}
+          </div>
+          <div class="message-actions">
+            {% if m.sender == request.user or request.user.profile.role == 'coordinator' %}
+              <button data-msg-id="{{ m.pk }}" class="btn-delete">Delete</button>
+            {% elif conversation.is_team and request.user.profile.role == 'coach' and request.user in conversation.team.coaches.all %}
+              <button data-msg-id="{{ m.pk }}" class="btn-delete">Delete</button>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <form id="sendForm" method="post" action="{% url 'send_message' conversation.pk %}" class="send-row">
+      {% csrf_token %}
+      <input id="sendInput" type="text" name="content" placeholder="Message..." autocomplete="off" />
+      <button type="submit" class="btn">Send</button>
+    </form>
+  </div>
+
+  <div class="chat-sidebar">
+    <div class="participants-card">
+      <div style="font-weight:700;margin-bottom:0.5rem">Participants</div>
+      <div id="participants-list">
+        {% for p in conversation.participants.all %}
+          <div class="participant" data-user-id="{{ p.user.pk }}">
+            <div>
+              <span class="participant-name">{{ p.user.get_full_name|default:p.user.username }}</span>
+              <span class="participant-status" style="margin-left:0.5rem;font-size:0.9rem;color:var(--muted)"></span>
+              {% if p.is_muted %}<span class="text-muted muted-span">(muted)</span>{% endif %}
+            </div>
+            <div>
+              {% if conversation.is_team and request.user.profile.role == 'coordinator' and p.user != request.user %}
+                <button class="btn-mute" data-user-id="{{ p.user.pk }}">Mute</button>
+              {% elif conversation.is_team and request.user in conversation.team.coaches.all and p.user != request.user %}
+                <button class="btn-mute" data-user-id="{{ p.user.pk }}">Mute</button>
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// helper to get CSRF token from cookie
+function getCookie(name) {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== '') {
+    const cookies = document.cookie.split(';');
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.substring(0, name.length + 1) === (name + '=')) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+}
+const CSRF = getCookie('csrftoken');
+
+// auto-scroll to bottom
+function scrollToBottom(){
+  const m = document.getElementById('messages');
+  if(m) m.scrollTop = m.scrollHeight;
+}
+scrollToBottom();
+
+// Send message via AJAX and append to DOM
+document.getElementById('sendForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const input = document.getElementById('sendInput');
+  const content = input.value.trim();
+  if(!content) return;
+  const fd = new FormData(); fd.append('content', content);
+  const res = await fetch(document.getElementById('sendForm').action, {method:'POST', body:fd, headers:{'X-Requested-With':'XMLHttpRequest','X-CSRFToken':CSRF}});
+  const data = await res.json();
+  if(data.ok){
+    // append message to DOM quickly
+    const row = document.createElement('div'); row.className='message-row'; row.setAttribute('data-msg-id', data.message_id);
+    row.innerHTML = `<div class="message-bubble"><div class="message-meta">${'You'} • ${new Date().toLocaleString()}</div><div class="message-content">${data.content}</div></div><div class="message-actions"><button data-msg-id="${data.message_id}" class="btn-delete">Delete</button></div>`;
+    document.getElementById('messages').appendChild(row);
+    input.value='';
+    scrollToBottom();
+  } else {
+    alert(data.error || 'Failed to send');
+  }
+});
+
+// Delegate delete and mute actions
+document.getElementById('messages').addEventListener('click', async (e) => {
+  if(e.target && e.target.classList.contains('btn-delete')){
+    const id = e.target.getAttribute('data-msg-id');
+    if(!confirm('Delete this message?')) return;
+    const url = `{% url 'delete_message' conversation.pk 0 %}`.replace('/0/', `/${id}/`);
+    const res = await fetch(url, {method:'POST', headers:{'X-Requested-With':'XMLHttpRequest','X-CSRFToken':CSRF}});
+    const j = await res.json();
+    if(j.ok){
+      // mark deleted in DOM
+      const row = document.querySelector(`[data-msg-id='${id}']`);
+      if(row){
+        const bubble = row.querySelector('.message-bubble');
+        if(bubble) bubble.innerHTML = '<div class="text-muted">Message deleted</div>';
+      }
+    } else alert(j.error||'Failed');
+  }
+});
+
+document.getElementById('participants-list').addEventListener('click', async (e) => {
+  if(e.target && e.target.classList.contains('btn-mute')){
+    const userId = e.target.getAttribute('data-user-id');
+    if(!confirm('Mute this participant for 1 hour?')) return;
+    const url = `{% url 'mute_participant' conversation.pk 0 %}`.replace('/0/', `/${userId}/`);
+    const res = await fetch(url, {method:'POST', headers:{'X-Requested-With':'XMLHttpRequest','X-CSRFToken':CSRF}});
+    const j = await res.json();
+    if(j.ok){
+      // update UI: only add muted marker if not already present
+      const p = document.querySelector(`.participant[data-user-id='${userId}']`);
+      if(p){
+        if(!p.querySelector('.muted-span')){
+          const nameDiv = p.querySelector('div');
+          const span = document.createElement('span');
+          span.className = 'text-muted muted-span';
+          span.textContent = ' (muted)';
+          nameDiv.appendChild(span);
+        }
+      }
+      alert('Muted');
+    } else alert(j.error||'Failed');
+  }
+});
+
+// Poll participants status and update sidebar per-participant
+async function pollStatus(){
+  try{
+    const res = await fetch('{% url "participants_status" conversation.pk %}');
+    const j = await res.json();
+    if(j.ok){
+      j.participants.forEach(p => {
+        const el = document.querySelector(`.participant[data-user-id='${p.id}']`);
+        if(el){
+          const statusSpan = el.querySelector('.participant-status');
+          if(statusSpan){
+            let parts = '';
+            if(p.is_online) parts += '<span style="color:#5ec27d">●</span>';
+            if(p.is_typing) parts += ' <em style="color:var(--muted);font-style:normal;margin-left:6px">typing…</em>';
+            statusSpan.innerHTML = parts;
+          }
+        }
+      });
+    }
+  }catch(e){console.log(e)}
+}
+setInterval(pollStatus, 3000);
+pollStatus();
+
+// keep scrolled on new messages (simple observer)
+const observer = new MutationObserver((mutations) => { scrollToBottom(); });
+observer.observe(document.getElementById('messages'), {childList:true});
+</script>
+
+{% endblock %}

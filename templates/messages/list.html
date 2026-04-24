@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-title">Messages</div>
+<div style="margin-top:1rem">
+  <ul>
+    {% for c in conversations %}
+      <li style="margin-bottom:0.5rem">
+        <a href="{% url 'conversation_detail' c.pk %}">
+          {% if c.is_team and c.team %}
+            🏐 {{ c.team.name }} (Team Chat)
+          {% else %}
+            {{ c.title|default:c.pk }}
+          {% endif %}
+        </a>
+      </li>
+    {% empty %}
+      <li>No conversations yet.</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endblock %}

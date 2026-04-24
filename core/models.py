@@ -205,3 +205,59 @@ class CoachEarning(models.Model):
 
     def __str__(self):
         return f"{self.coach.username} - {self.session.title} - ${self.amount}"
+
+
+#  Messaging models 
+
+
+class Conversation(models.Model):
+    """Represents a conversation: either a private chat between users or a team chat.
+
+    If `team` is set and `is_team` is True, the conversation is the team's chat.
+    """
+    title = models.CharField(max_length=200, blank=True)
+    team = models.ForeignKey(Team, on_delete=models.SET_NULL, null=True, blank=True, related_name='conversations')
+    is_team = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        if self.is_team and self.team:
+            return f"Team Chat: {self.team.name}"
+        return self.title or f"Conversation {self.pk}"
+
+
+class ConversationParticipant(models.Model):
+    conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name='participants')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='conversations')
+    joined_at = models.DateTimeField(auto_now_add=True)
+    last_read_at = models.DateTimeField(null=True, blank=True)
+    last_typing_at = models.DateTimeField(null=True, blank=True)
+    muted_until = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = ('conversation', 'user')
+
+    def is_muted(self):
+        if not self.muted_until:
+            return False
+        return timezone.now() < self.muted_until
+
+    def __str__(self):
+        return f"{self.user.username} in {self.conversation}"
+
+
+class Message(models.Model):
+    conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name='messages')
+    sender = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='sent_messages')
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    edited = models.BooleanField(default=False)
+    is_deleted = models.BooleanField(default=False)
+
+    def mark_deleted(self, by_user=None):
+        # soft delete; keep record for audits
+        self.is_deleted = True
+        self.save()
+
+    def __str__(self):
+        return f"{self.sender.username if self.sender else 'System'}: {self.content[:30]}"

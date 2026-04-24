@@ -12,6 +12,7 @@
     <a href="{% url 'team_edit' team.pk %}" class="btn btn-secondary">✏️ Edit</a>
     <a href="{% url 'team_delete' team.pk %}" class="btn btn-danger">🗑️ Delete</a>
     {% endif %}
+  <a href="{% url 'start_team_conversation' team.pk %}" class="btn btn-primary">💬 Open Team Chat</a>
   {% if role == 'player' and request.user not in team.players.all %}
   <form method="post" action="{% url 'request_join_team' team.pk %}">{% csrf_token %}<button class="btn btn-primary">+ Request to Join</button></form>
   {% elif role == 'player' and request.user in team.players.all %}
@@ -28,7 +29,7 @@
     {% if role == 'coordinator' and all_coaches %}
       <button onclick="document.getElementById('assign-coach-form').style.display=document.getElementById('assign-coach-form').style.display==='none'?'block':'none'" class="btn btn-secondary btn-sm">+ Assign Coach</button>
     {% endif %}
-  {% if role in 'coach coordinator' %}
+  {% if role == 'coach' or role == 'coordinator' %}
   <a href="{% url 'team_join_requests' team.pk %}" class="btn btn-secondary btn-sm">Pending Join Requests</a>
   <a href="{% url 'team_leave_requests' team.pk %}" class="btn btn-secondary btn-sm">Pending Leave Requests</a>
   {% endif %}
@@ -77,9 +78,12 @@
           {% if player.profile.jersey_number %}<span class="text-muted" style="font-size:0.75rem">#{{ player.profile.jersey_number }} · {{ player.profile.position }}</span>{% endif %}
         </div>
       </div>
-      {% if role == 'coordinator' or role == 'coach' %}
-      <form method="post" action="{% url 'remove_player' team.pk player.pk %}">{% csrf_token %}<button class="btn btn-danger btn-sm">Remove</button></form>
-      {% endif %}
+  <div style="display:flex;gap:0.5rem;align-items:center">
+  {% if role == 'coordinator' or role == 'coach' %}
+  <form method="post" action="{% url 'remove_player' team.pk player.pk %}">{% csrf_token %}<button class="btn btn-danger btn-sm">Remove</button></form>
+  {% endif %}
+  <a href="{% url 'start_private_conversation' player.pk %}" class="btn btn-primary btn-sm">💬</a>
+  </div>
     </div>
     {% empty %}<div class="text-muted" style="font-size:0.85rem">No players yet.</div>{% endfor %}
   </div>

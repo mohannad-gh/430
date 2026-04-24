@@ -28,7 +28,10 @@
             {% elif u.profile.role == 'coach' %}{{ u.coached_teams.count }} teams
             {% else %}—{% endif %}
           </td>
-          <td><a href="{% url 'user_edit' u.pk %}" class="btn btn-secondary btn-sm">✏️ Edit</a></td>
+          <td style="display:flex;gap:0.5rem">
+            <a href="{% url 'user_edit' u.pk %}" class="btn btn-secondary btn-sm">✏️ Edit</a>
+            <a href="{% url 'start_private_conversation' u.pk %}" class="btn btn-primary btn-sm">💬 Message</a>
+          </td>
         </tr>
         {% empty %}
         <tr><td colspan="5" class="empty-state">No users found.</td></tr>

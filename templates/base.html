@@ -53,6 +53,9 @@
       <a href="{% url 'announcements_list' %}" class="nav-item {% if 'announcement' in request.resolver_match.url_name %}active{% endif %}">
         <span class="icon">📢</span> Announcements
       </a>
+  <a href="{% url 'conversations_list' %}" class="nav-item {% if request.resolver_match.url_name == 'conversations_list' or request.resolver_match.url_name == 'conversation_detail' or request.resolver_match.url_name == 'conversation' %}active{% endif %}">
+        <span class="icon">💬</span> Messages
+      </a>
       <a href="{% url 'notifications_list' %}" class="nav-item {% if 'notification' in request.resolver_match.url_name %}active{% endif %}">
         <span class="icon">🔔</span> Notifications
         {% with count=request.user.notifications.filter %}
@@ -102,14 +105,7 @@
 
   <!-- Main -->
   <main class="main-content">
-    {% if messages %}
-      {% for message in messages %}
-        <div class="alert alert-{% if message.tags == 'error' %}error{% else %}{{ message.tags }}{% endif %}">
-          {% if message.tags == 'success' %}✅{% elif message.tags == 'error' %}❌{% else %}ℹ️{% endif %}
-          {{ message }}
-        </div>
-      {% endfor %}
-    {% endif %}
+  {# Flash messages removed — chat UI will surface communication feedback instead #}
 
     {% block content %}{% endblock %}
   </main>
