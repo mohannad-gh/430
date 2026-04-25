@@ -87,6 +87,7 @@ urlpatterns = [
     path('messages/<int:conv_pk>/participants/status/', views.participants_status, name='participants_status'),
     path('messages/<int:conv_pk>/participants/add/', views.add_participant, name='add_participant'),
     path('messages/<int:conv_pk>/participants/remove/<int:user_pk>/', views.remove_participant, name='remove_participant'),
+    path('messages/<int:conv_pk>/message/<int:msg_pk>/readers/', views.message_readers, name='message_readers'),
     path('messages/start/<int:user_pk>/', views.start_private_conversation, name='start_private_conversation'),
     path('messages/start/team/<int:team_pk>/', views.start_team_conversation, name='start_team_conversation'),
 ]

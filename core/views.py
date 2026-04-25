@@ -328,6 +328,16 @@ def participants_status(request, conv_pk):
 
 
 @login_required
+def message_readers(request, conv_pk, msg_pk):
+    conv = get_object_or_404(Conversation, pk=conv_pk)
+    msg = get_object_or_404(Message, pk=msg_pk, conversation=conv)
+    # gather participants (excluding sender) whose last_read_at >= message.created_at
+    readers = ConversationParticipant.objects.filter(conversation=conv, last_read_at__gte=msg.created_at).exclude(user=msg.sender)
+    data = [{'id': r.user.pk, 'name': r.user.get_full_name() or r.user.username, 'read_at': r.last_read_at.isoformat() if r.last_read_at else None} for r in readers]
+    return JsonResponse({'ok': True, 'readers': data})
+
+
+@login_required
 def add_participant(request, conv_pk):
     conv = get_object_or_404(Conversation, pk=conv_pk)
     role = get_role(request.user)

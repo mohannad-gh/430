@@ -44,6 +44,9 @@
             {% elif conversation.is_team and request.user.profile.role == 'coach' and request.user in conversation.team.coaches.all %}
               <button data-msg-id="{{ m.pk }}" class="btn-delete">Delete</button>
             {% endif %}
+            {% if m.sender == request.user %}
+              <button class="btn-readers" data-msg-id="{{ m.pk }}">⋯</button>
+            {% endif %}
           </div>
         </div>
       {% endfor %}
@@ -197,6 +200,31 @@ pollStatus();
 // keep scrolled on new messages (simple observer)
 const observer = new MutationObserver((mutations) => { scrollToBottom(); });
 observer.observe(document.getElementById('messages'), {childList:true});
+
+// Read receipts popover
+document.getElementById('messages').addEventListener('click', async (e) => {
+  if(e.target && e.target.classList.contains('btn-readers')){
+    const msgId = e.target.getAttribute('data-msg-id');
+    const url = `{% url 'message_readers' conversation.pk 0 %}`.replace('/0/', `/${msgId}/`);
+    const res = await fetch(url, {headers:{'X-Requested-With':'XMLHttpRequest'}});
+    const j = await res.json();
+    if(j.ok){
+      let html = '';
+      if(j.readers.length === 0) html = '<div style="padding:8px">No one else has read this yet.</div>';
+      else{
+        j.readers.forEach(r => { html += `<div style="padding:6px 8px">${r.name} <span style="color:var(--muted);font-size:0.9rem;margin-left:6px">${new Date(r.read_at).toLocaleString()}</span></div>` });
+      }
+      // simple popover
+      const pop = document.createElement('div'); pop.className='readers-popover'; pop.style.position='absolute'; pop.style.background='rgba(0,0,0,0.85)'; pop.style.color='white'; pop.style.border='1px solid rgba(255,255,255,0.06)'; pop.style.padding='0.4rem'; pop.style.borderRadius='6px'; pop.style.zIndex=9999; pop.innerHTML = html;
+      // position near button
+      const rect = e.target.getBoundingClientRect();
+      pop.style.left = (rect.left + window.scrollX) + 'px';
+      pop.style.top = (rect.bottom + window.scrollY + 6) + 'px';
+      document.body.appendChild(pop);
+      setTimeout(()=> pop.remove(), 6000);
+    }
+  }
+});
 </script>
 
 {% endblock %}
