@@ -76,6 +76,12 @@ urlpatterns = [
     # Users
     path('users/', views.users_list, name='users_list'),
     path('users/<int:pk>/edit/', views.user_edit, name='user_edit'),
+
+    # Performance Insights
+    path('performance/', views.performance_dashboard, name='performance_dashboard'),
+    path('performance/record/<int:session_id>/', views.record_performance, name='record_performance'),
+    path('performance/recommendation/add/<int:player_id>/', views.add_recommendation, name='add_recommendation'),
+
     # Messaging
     path('messages/', views.conversations_list, name='conversations_list'),
     path('messages/<int:pk>/', views.conversation_detail, name='conversation_detail'),

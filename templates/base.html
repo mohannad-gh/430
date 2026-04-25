@@ -27,6 +27,11 @@
         <span class="icon">👥</span> Teams
       </a>
 
+      <div class="nav-label" style="margin-top:1rem">Performance</div>
+      <a href="{% url 'performance_dashboard' %}" class="nav-item {% if 'performance' in request.resolver_match.url_name %}active{% endif %}">
+        <span class="icon">📈</span> Insights
+      </a>
+
       {% if request.user.profile.role != 'coordinator' %}
       <div class="nav-label" style="margin-top:1rem">Schedule</div>
       <a href="{% url 'sessions_list' %}" class="nav-item {% if 'session' in request.resolver_match.url_name %}active{% endif %}">
@@ -58,8 +63,6 @@
       </a>
       <a href="{% url 'notifications_list' %}" class="nav-item {% if 'notification' in request.resolver_match.url_name %}active{% endif %}">
         <span class="icon">🔔</span> Notifications
-        {% with count=request.user.notifications.filter %}
-        {% endwith %}
       </a>
 
       <div class="nav-label" style="margin-top:1rem">Finance</div>

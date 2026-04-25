@@ -10,12 +10,13 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse
 from django.utils import timezone
-from django.db.models import Sum, Q
+from django.db.models import Sum, Q, Avg
 
 from .models import (
     UserProfile, Team, Court, Availability, Session,
     Attendance, Announcement, Notification, Fee, PlayerFee, CoachEarning,
     Conversation, ConversationParticipant, Message,
+    PerformanceRecord, PerformanceRecommendation
 )
 from django.utils import timezone
 from .models import TeamJoinRequest
@@ -826,8 +827,9 @@ def session_detail(request, pk):
     session = get_object_or_404(Session, pk=pk)
     role = get_role(request.user)
     attendances = session.attendances.select_related('player')
+    performance_records = PerformanceRecord.objects.filter(session=session).select_related('player')
     return render(request, 'sessions/detail.html', {
-        'session': session, 'role': role, 'attendances': attendances
+        'session': session, 'role': role, 'attendances': attendances, 'performance_records': performance_records
     })
 
 
@@ -1590,3 +1592,144 @@ def user_edit(request, pk):
         messages.success(request, 'User updated.')
         return redirect('users_list')
     return render(request, 'users/edit.html', {'target': target})
+
+
+# ─── performance ──────────────────────────────────────────────────────────────
+
+@login_required
+@require_role('coach', 'coordinator')
+def record_performance(request, session_id):
+    session = get_object_or_404(Session, pk=session_id)
+    if session.session_type != 'match':
+        messages.error(request, "Performance can only be recorded for matches.")
+        return redirect('session_detail', pk=session_id)
+
+    players = session.team.players.all()
+    if request.method == 'POST':
+        for player in players:
+            serving = request.POST.get(f'serving_{player.id}', 0)
+            blocking = request.POST.get(f'blocking_{player.id}', 0)
+            defense = request.POST.get(f'defense_{player.id}', 0)
+            attack = request.POST.get(f'attack_{player.id}', 0)
+
+            PerformanceRecord.objects.update_or_create(
+                player=player, session=session,
+                defaults={
+                    'serving': float(serving),
+                    'blocking': float(blocking),
+                    'defense': float(defense),
+                    'attack': float(attack)
+                }
+            )
+        messages.success(request, "Performance statistics recorded.")
+        return redirect('session_detail', pk=session_id)
+
+    existing = {pr.player_id: pr for pr in PerformanceRecord.objects.filter(session=session)}
+    return render(request, 'performance/record.html', {
+        'session': session, 'players': players, 'existing': existing
+    })
+
+
+@login_required
+def performance_dashboard(request):
+    role = get_role(request.user)
+
+    # Filtering params
+    date_from_str = request.GET.get('from')
+    date_to_str = request.GET.get('to')
+    metric = request.GET.get('metric', 'all')
+    player_id = request.GET.get('player')
+
+    today = date.today()
+    if date_from_str:
+        date_from = datetime.strptime(date_from_str, '%Y-%m-%d').date()
+    else:
+        date_from = today - timedelta(days=30)
+
+    if date_to_str:
+        date_to = datetime.strptime(date_to_str, '%Y-%m-%d').date()
+    else:
+        date_to = today
+
+    # For comparison (Period 2)
+    compare_from_str = request.GET.get('compare_from')
+    compare_to_str = request.GET.get('compare_to')
+
+    # Base Queryset
+    if role == 'player':
+        records = PerformanceRecord.objects.filter(player=request.user)
+        recommendations = PerformanceRecommendation.objects.filter(player=request.user).order_by('-created_at')
+    else:
+        records = PerformanceRecord.objects.all()
+        if role == 'coach':
+            records = records.filter(session__team__coaches=request.user)
+
+        if player_id:
+            records = records.filter(player_id=player_id)
+
+    # Filter by time frame
+    current_period = records.filter(session__date__range=[date_from, date_to])
+
+    # Calculate stats
+    def get_stats(qs):
+        if not qs.exists():
+            return {'serving': 0, 'blocking': 0, 'defense': 0, 'attack': 0}
+        return qs.aggregate(
+            serving=Avg('serving'), blocking=Avg('blocking'),
+            defense=Avg('defense'), attack=Avg('attack')
+        )
+
+    current_stats = get_stats(current_period)
+
+    # Comparison logic
+    comparison_stats = None
+    percentage_changes = None
+    if compare_from_str and compare_to_str:
+        compare_from = datetime.strptime(compare_from_str, '%Y-%m-%d').date()
+        compare_to = datetime.strptime(compare_to_str, '%Y-%m-%d').date()
+        comparison_period = records.filter(session__date__range=[compare_from, compare_to])
+        comparison_stats = get_stats(comparison_period)
+
+        percentage_changes = {}
+        for k in ['serving', 'blocking', 'defense', 'attack']:
+            old_val = comparison_stats[k] or 0
+            new_val = current_stats[k] or 0
+            if old_val > 0:
+                percentage_changes[k] = ((new_val - old_val) / old_val) * 100
+            else:
+                percentage_changes[k] = 100 if new_val > 0 else 0
+
+    ctx = {
+        'role': role,
+        'records': current_period.order_by('-session__date'),
+        'current_stats': current_stats,
+        'comparison_stats': comparison_stats,
+        'percentage_changes': percentage_changes,
+        'date_from': date_from,
+        'date_to': date_to,
+        'metric': metric,
+    }
+
+    if role == 'player':
+        ctx['recommendations'] = recommendations
+    else:
+        ctx['players'] = User.objects.filter(profile__role='player')
+        if role == 'coach':
+            ctx['players'] = ctx['players'].filter(teams__coaches=request.user).distinct()
+        ctx['selected_player'] = player_id
+
+    return render(request, 'performance/dashboard.html', ctx)
+
+
+@login_required
+@require_role('coach', 'coordinator')
+def add_recommendation(request, player_id):
+    player = get_object_or_404(User, pk=player_id)
+    if request.method == 'POST':
+        content = request.POST.get('content')
+        PerformanceRecommendation.objects.create(
+            player=player, coach=request.user, content=content
+        )
+        messages.success(request, f"Recommendation sent to {player.username}.")
+        return redirect('performance_dashboard')
+    return render(request, 'performance/add_recommendation.html', {'player': player})

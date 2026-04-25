@@ -1,6 +1,6 @@
 # VolleyLB — Club Management System
 
-A Django app for managing a Lebanese volleyball club. Covers all Sprint 1 user stories.
+A Django app for managing a Lebanese volleyball club. Covers all Sprint 1 & 2 user stories.
 
 ## Quick Start
 
@@ -49,7 +49,7 @@ Open http://127.0.0.1:8000
 
 ---
 
-## Sprint 1 User Stories Covered
+## Features Covered
 
 ### Management
 - ✅ Role-based dashboards (Coordinator, Coach, Player)
@@ -70,10 +70,19 @@ Open http://127.0.0.1:8000
 - ✅ Player views personal schedule
 - ✅ AI Smart Scheduling (Claude API + Open-Meteo weather)
 
-### Communication
+### Communication & Messaging
 - ✅ Coach sends team announcements
 - ✅ Coordinator broadcasts club-wide messages
 - ✅ In-app notification system
+- ✅ **Private & Team Chat**: Real-time messaging with read receipts, typing indicators, and muting.
+
+### Performance Insights
+- ✅ **Game Statistics**: Coach records serving, blocking, defense, and attack after matches.
+- ✅ **Time Frame Analysis**: Filter performance data by specific dates.
+- ✅ **Player History**: Players can view their individual performance trends.
+- ✅ **Comparative Analysis**: Quantitative percentage change between two time periods.
+- ✅ **Individual Deep-dive**: Filter stats by specific player or specific metric.
+- ✅ **Personalized Recommendations**: Coaches send targeted training advice to players.
 
 ### Finance (Coordinator)
 - ✅ Define registration fees
@@ -82,6 +91,7 @@ Open http://127.0.0.1:8000
 - ✅ View payment statuses (paid/pending/overdue)
 - ✅ Auto late fee application
 - ✅ Financial summary dashboard
+- ✅ **Coach Payouts**: Automated calculation of earnings ($75/training, $100/match).
 
 ### Finance (Player)
 - ✅ View fees and payment status

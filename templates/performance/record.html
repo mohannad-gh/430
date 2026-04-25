@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+{% load performance_tags %}
+
+{% block title %}Record Match Statistics — VolleyLB{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <a href="{% url 'session_detail' session.pk %}" class="text-muted" style="font-size:0.85rem">← Back to Match</a>
+    <div class="page-title">Record Statistics</div>
+    <div class="text-muted">{{ session.title }} · {{ session.date }}</div>
+  </div>
+</div>
+
+<div class="card mt-2">
+  <form method="post">
+    {% csrf_token %}
+    <div class="table-responsive">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Player</th>
+            <th style="width:100px">Serving</th>
+            <th style="width:100px">Blocking</th>
+            <th style="width:100px">Defense</th>
+            <th style="width:100px">Attack</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in players %}
+          {% with rec=existing|dict_get:p.id %}
+          <tr>
+            <td style="font-weight:600">{{ p.get_full_name|default:p.username }}</td>
+            <td><input type="number" step="0.1" name="serving_{{ p.id }}" class="form-input" value="{{ rec.serving|default:0 }}"></td>
+            <td><input type="number" step="0.1" name="blocking_{{ p.id }}" class="form-input" value="{{ rec.blocking|default:0 }}"></td>
+            <td><input type="number" step="0.1" name="defense_{{ p.id }}" class="form-input" value="{{ rec.defense|default:0 }}"></td>
+            <td><input type="number" step="0.1" name="attack_{{ p.id }}" class="form-input" value="{{ rec.attack|default:0 }}"></td>
+          </tr>
+          {% endwith %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="mt-3">
+      <button type="submit" class="btn btn-primary w-full">Save Statistics</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

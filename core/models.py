@@ -207,14 +207,35 @@ class CoachEarning(models.Model):
         return f"{self.coach.username} - {self.session.title} - ${self.amount}"
 
 
-#  Messaging models 
+class PerformanceRecord(models.Model):
+    player = models.ForeignKey(User, on_delete=models.CASCADE, related_name='performance_records')
+    session = models.ForeignKey(Session, on_delete=models.CASCADE, related_name='performance_records')
+    serving = models.FloatField(default=0.0)
+    blocking = models.FloatField(default=0.0)
+    defense = models.FloatField(default=0.0)
+    attack = models.FloatField(default=0.0)
+    created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        unique_together = ('player', 'session')
+
+    def __str__(self):
+        return f"{self.player.username} - {self.session.title}"
+
+
+class PerformanceRecommendation(models.Model):
+    player = models.ForeignKey(User, on_delete=models.CASCADE, related_name='recommendations')
+    coach = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='given_recommendations')
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Recommendation for {self.player.username}"
+
+
+# Messaging models
 
 class Conversation(models.Model):
-    """Represents a conversation: either a private chat between users or a team chat.
-
-    If `team` is set and `is_team` is True, the conversation is the team's chat.
-    """
     title = models.CharField(max_length=200, blank=True)
     team = models.ForeignKey(Team, on_delete=models.SET_NULL, null=True, blank=True, related_name='conversations')
     is_team = models.BooleanField(default=False)
@@ -255,7 +276,6 @@ class Message(models.Model):
     is_deleted = models.BooleanField(default=False)
 
     def mark_deleted(self, by_user=None):
-        # soft delete; keep record for audits
         self.is_deleted = True
         self.save()
 

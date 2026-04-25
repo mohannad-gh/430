@@ -10,6 +10,9 @@
     {% if session.status == 'scheduled' %}
     <a href="{% url 'manage_attendance' session.pk %}" class="btn btn-primary">📋 Mark Attendance</a>
     {% endif %}
+    {% if session.session_type == 'match' %}
+    <a href="{% url 'record_performance' session.pk %}" class="btn btn-orange">📊 Record Stats</a>
+    {% endif %}
     <a href="{% url 'session_delete' session.pk %}" class="btn btn-danger">🗑️</a>
     {% endif %}
   </div>
@@ -46,11 +49,10 @@
     </div>
     {% if session.opponent %}<div class="mt-2"><div class="text-muted" style="font-size:0.7rem;letter-spacing:1px;text-transform:uppercase">Opponent</div><div style="font-family:'Bebas Neue',cursive;font-size:1.2rem">vs {{ session.opponent }}</div></div>{% endif %}
     {% if session.notes %}<div class="mt-2"><div class="text-muted" style="font-size:0.7rem;letter-spacing:1px;text-transform:uppercase">Notes</div><div style="font-size:0.9rem;color:var(--text-light)">{{ session.notes }}</div></div>{% endif %}
-    {% if session.ai_generated %}<div class="mt-2"><span class="badge badge-info">🧠 AI-Generated Session</span></div>{% endif %}
   </div>
 
   <div class="card">
-    <div class="card-header"><div class="card-title">📋 Attendance ({{ attendances.count }})</div></div>
+    <div class="card-header"><div class="card-title">📋 Attendance</div></div>
     {% for att in attendances %}
     <div style="display:flex;align-items:center;justify-content:space-between;padding:0.6rem 0;border-bottom:1px solid var(--border)">
       <div style="display:flex;align-items:center;gap:0.5rem">
@@ -60,10 +62,38 @@
       <span class="badge badge-{% if att.status == 'present' %}success{% elif att.status == 'late' %}warning{% else %}danger{% endif %}">{{ att.status }}</span>
     </div>
     {% empty %}
-    <div class="text-muted" style="font-size:0.85rem">
-      {% if session.status == 'scheduled' %}Attendance will be recorded after the session.{% else %}No attendance recorded.{% endif %}
-    </div>
+    <div class="text-muted" style="font-size:0.85rem">No attendance recorded.</div>
     {% endfor %}
   </div>
 </div>
+
+{% if session.session_type == 'match' and performance_records %}
+<div class="card">
+  <div class="card-header"><div class="card-title">📊 Match Statistics</div></div>
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Player</th>
+          <th>Serving</th>
+          <th>Blocking</th>
+          <th>Defense</th>
+          <th>Attack</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for pr in performance_records %}
+        <tr>
+          <td style="font-weight:600">{{ pr.player.get_full_name|default:pr.player.username }}</td>
+          <td>{{ pr.serving }}%</td>
+          <td>{{ pr.blocking }}%</td>
+          <td>{{ pr.defense }}%</td>
+          <td>{{ pr.attack }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
 {% endblock %}

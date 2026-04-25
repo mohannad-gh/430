@@ -1,0 +1,139 @@
+{% extends 'base.html' %}
+{% load performance_tags %}
+
+{% block title %}Performance Insights — VolleyLB{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <div class="page-title">Performance <span>Insights</span></div>
+    <div class="text-muted">Quantitative analysis and growth tracking</div>
+  </div>
+</div>
+
+<div class="grid-3 mt-2">
+  <!-- Sidebar Filters -->
+  <div class="card">
+    <div class="card-header"><div class="card-title">🔍 Filters</div></div>
+    <form method="get" class="mt-2">
+      <div class="form-group mb-2">
+        <label class="text-muted" style="font-size:0.75rem;text-transform:uppercase">Period 1 (Current)</label>
+        <div style="display:flex;gap:0.5rem">
+          <input type="date" name="from" value="{{ date_from|date:'Y-m-d' }}" class="form-input" style="font-size:0.8rem">
+          <input type="date" name="to" value="{{ date_to|date:'Y-m-d' }}" class="form-input" style="font-size:0.8rem">
+        </div>
+      </div>
+
+      {% if role != 'player' %}
+      <div class="form-group mb-2">
+        <label class="text-muted" style="font-size:0.75rem;text-transform:uppercase">Player</label>
+        <select name="player" class="form-input">
+          <option value="">Team Average</option>
+          {% for p in players %}
+          <option value="{{ p.id }}" {% if selected_player == p.id|stringformat:"i" %}selected{% endif %}>{{ p.get_full_name|default:p.username }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+
+      <div class="form-group mb-2">
+        <label class="text-muted" style="font-size:0.75rem;text-transform:uppercase">Specific Metric</label>
+        <select name="metric" class="form-input">
+          <option value="all" {% if metric == 'all' %}selected{% endif %}>All Metrics</option>
+          <option value="serving" {% if metric == 'serving' %}selected{% endif %}>Serving</option>
+          <option value="blocking" {% if metric == 'blocking' %}selected{% endif %}>Blocking</option>
+          <option value="defense" {% if metric == 'defense' %}selected{% endif %}>Defense</option>
+          <option value="attack" {% if metric == 'attack' %}selected{% endif %}>Attack</option>
+        </select>
+      </div>
+
+      <div class="form-group mb-2">
+        <label class="text-muted" style="font-size:0.75rem;text-transform:uppercase">Compare to (Period 2)</label>
+        <div style="display:flex;gap:0.5rem">
+          <input type="date" name="compare_from" value="{{ request.GET.compare_from }}" class="form-input" style="font-size:0.8rem">
+          <input type="date" name="compare_to" value="{{ request.GET.compare_to }}" class="form-input" style="font-size:0.8rem">
+        </div>
+        <p class="text-muted" style="font-size:0.7rem;margin-top:0.3rem">Optional: Select to see percentage change.</p>
+      </div>
+
+      <button type="submit" class="btn btn-primary w-full">Apply Analysis</button>
+    </form>
+  </div>
+
+  <!-- Stats Overview -->
+  <div class="span-2">
+    <div class="stats-grid" style="grid-template-columns: repeat({% if metric == 'all' %}2{% else %}1{% endif %}, 1fr); gap: 1rem;">
+      {% for m_name, value in current_stats.items %}
+        {% if metric == 'all' or metric == m_name %}
+        <div class="stat-card">
+          <div class="stat-label" style="text-transform: capitalize;">{{ m_name }}</div>
+          <div class="stat-value" style="font-size: 2rem;">{{ value|default:0|floatformat:1 }}%</div>
+          {% if percentage_changes %}
+            {% with change=percentage_changes|dict_get:m_name %}
+            <div style="font-size:0.85rem; font-weight:600; color: {% if change >= 0 %}var(--success){% else %}var(--danger){% endif %}">
+              {% if change >= 0 %}↑{% else %}↓{% endif %} {{ change|abs_val|floatformat:1 }}% vs Period 2
+            </div>
+            {% endwith %}
+          {% endif %}
+        </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+
+    <div class="card mt-2">
+      <div class="card-header"><div class="card-title">📈 Match History (Period 1)</div></div>
+      <div class="table-responsive">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Match</th>
+              {% if metric == 'all' or metric == 'serving' %}<th>Serving</th>{% endif %}
+              {% if metric == 'all' or metric == 'blocking' %}<th>Blocking</th>{% endif %}
+              {% if metric == 'all' or metric == 'defense' %}<th>Defense</th>{% endif %}
+              {% if metric == 'all' or metric == 'attack' %}<th>Attack</th>{% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in records %}
+            <tr>
+              <td>{{ r.session.date|date:"d M" }}</td>
+              <td>{{ r.session.title }}</td>
+              {% if metric == 'all' or metric == 'serving' %}<td>{{ r.serving }}</td>{% endif %}
+              {% if metric == 'all' or metric == 'blocking' %}<td>{{ r.blocking }}</td>{% endif %}
+              {% if metric == 'all' or metric == 'defense' %}<td>{{ r.defense }}</td>{% endif %}
+              {% if metric == 'all' or metric == 'attack' %}<td>{{ r.attack }}</td>{% endif %}
+            </tr>
+            {% empty %}
+            <tr><td colspan="6" class="text-center text-muted">No data for selected period</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if role == 'player' %}
+<div class="card mt-3">
+  <div class="card-header"><div class="card-title">💡 Personalized Recommendations</div></div>
+  {% for rec in recommendations %}
+  <div class="ann-card" style="border-left: 4px solid var(--orange)">
+    <div class="ann-title" style="color:var(--orange)">From Coach {{ rec.coach.get_full_name|default:rec.coach.username }}</div>
+    <div class="ann-meta">{{ rec.created_at|date:"M d, Y" }}</div>
+    <div class="ann-content">{{ rec.content|linebreaks }}</div>
+  </div>
+  {% empty %}
+  <div class="empty-state">No specific recommendations yet. Keep practicing!</div>
+  {% endfor %}
+</div>
+{% elif selected_player %}
+<div class="card mt-3">
+    <div class="card-header"><div class="card-title">✍️ Send Recommendation</div></div>
+    <form action="{% url 'add_recommendation' selected_player %}" method="post" class="mt-2">
+        {% csrf_token %}
+        <textarea name="content" class="form-input" rows="3" placeholder="Provide personalized advice based on this analysis..."></textarea>
+        <button type="submit" class="btn btn-primary mt-2">Send to Player</button>
+    </form>
+</div>
+{% endif %}
+{% endblock %}
