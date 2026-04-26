@@ -1,0 +1,6 @@
+Django==6.0.4
+anthropic==0.94.0
+pydantic==2.12.5
+httpx==0.28.1
+requests==2.33.1
+docstring_parser==0.17.0
