@@ -9,22 +9,17 @@ A Django app for managing a Lebanese volleyball club. Covers all Sprint 1 & 2 us
 pip install django anthropic requests
 ```
 
-### 2. Set your Anthropic API key (for AI scheduling)
-```bash
-export ANTHROPIC_API_KEY=your_key_here
-```
-
-### 3. Run migrations
+### 2. Run migrations
 ```bash
 python manage.py migrate
 ```
 
-### 4. Seed demo data
+### 3. Seed demo data
 ```bash
 python manage.py seed
 ```
 
-### 5. Run the server
+### 4. Run the server
 ```bash
 python manage.py runserver
 ```
